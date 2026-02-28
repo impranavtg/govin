@@ -22,7 +22,13 @@ var groupCreateCmd = &cobra.Command{
 	Short: "Create a new group",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		g, err := models.CreateGroup(args[0], groupCreateCurrency)
+		var g *models.Group
+		var err error
+		if RemoteClient != nil {
+			g, err = RemoteClient.CreateGroup(args[0], groupCreateCurrency)
+		} else {
+			g, err = models.CreateGroup(args[0], groupCreateCurrency)
+		}
 		if err != nil {
 			errExit(err.Error())
 		}
@@ -39,7 +45,13 @@ var groupListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all groups",
 	Run: func(cmd *cobra.Command, args []string) {
-		groups, err := models.ListGroups()
+		var groups []models.Group
+		var err error
+		if RemoteClient != nil {
+			groups, err = RemoteClient.ListGroups()
+		} else {
+			groups, err = models.ListGroups()
+		}
 		if err != nil {
 			errExit(err.Error())
 		}
@@ -70,15 +82,25 @@ var groupShowCmd = &cobra.Command{
 	Short: "Show group details (members + expense count)",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		g, err := models.GetGroup(args[0])
+		g, err := getGroup(args[0])
 		if err != nil {
 			errExit(err.Error())
 		}
-		members, err := models.ListMembers(g.ID)
-		if err != nil {
-			errExit(err.Error())
+		var members []models.Member
+		var expenses []models.Expense
+		if RemoteClient != nil {
+			members, err = RemoteClient.ListMembers(g.Name)
+			if err != nil {
+				errExit(err.Error())
+			}
+			expenses, err = RemoteClient.ListExpenses(g.Name)
+		} else {
+			members, err = models.ListMembers(g.ID)
+			if err != nil {
+				errExit(err.Error())
+			}
+			expenses, err = models.ListExpenses(g.ID)
 		}
-		expenses, err := models.ListExpenses(g.ID)
 		if err != nil {
 			errExit(err.Error())
 		}
@@ -107,7 +129,13 @@ var groupDeleteCmd = &cobra.Command{
 	Short: "Delete a group and all its data",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := models.DeleteGroup(args[0]); err != nil {
+		var err error
+		if RemoteClient != nil {
+			err = RemoteClient.DeleteGroup(args[0])
+		} else {
+			err = models.DeleteGroup(args[0])
+		}
+		if err != nil {
 			errExit(err.Error())
 		}
 		fmt.Println(StyleSuccess.Render("✓") + " Group " + StyleBold.Render(args[0]) + " deleted")

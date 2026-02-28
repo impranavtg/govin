@@ -15,24 +15,38 @@ var settleCmd = &cobra.Command{
 	Short: "Show the minimum set of payments to settle all debts",
 	Run: func(cmd *cobra.Command, args []string) {
 		groupName := resolveGroup(settleFlagGroup)
-		g, err := models.GetGroup(groupName)
-		if err != nil {
-			errExit(err.Error())
+
+		var payments []settler.Payment
+		var sym string
+		var err error
+
+		if RemoteClient != nil {
+			payments, err = RemoteClient.Settle(groupName)
+			if err != nil {
+				errExit(err.Error())
+			}
+			if g, gerr := RemoteClient.GetGroup(groupName); gerr == nil {
+				sym = g.CurrencySymbol()
+			}
+		} else {
+			g, gerr := models.GetGroup(groupName)
+			if gerr != nil {
+				errExit(gerr.Error())
+			}
+			sym = g.CurrencySymbol()
+			balances, berr := models.ComputeBalances(g.ID)
+			if berr != nil {
+				errExit(berr.Error())
+			}
+			payments = settler.Settle(balances)
 		}
 
-		balances, err := models.ComputeBalances(g.ID)
-		if err != nil {
-			errExit(err.Error())
-		}
-
-		payments := settler.Settle(balances)
 		if len(payments) == 0 {
 			fmt.Println(StyleSuccess.Render("✓ All settled up! No payments needed."))
 			return
 		}
 
-		sym := g.CurrencySymbol()
-		fmt.Println(StyleTitle.Render("Settlement Plan — " + g.Name))
+		fmt.Println(StyleTitle.Render("Settlement Plan — " + groupName))
 		fmt.Println(StyleMuted.Render(fmt.Sprintf("(%d payment(s) needed)", len(payments))))
 		fmt.Println()
 
@@ -62,24 +76,31 @@ var paidCmd = &cobra.Command{
 	Short: "Record that someone has settled their debt",
 	Run: func(cmd *cobra.Command, args []string) {
 		groupName := resolveGroup(paidFlagGroup)
-		g, err := models.GetGroup(groupName)
-		if err != nil {
-			errExit(err.Error())
+
+		if RemoteClient != nil {
+			if err := RemoteClient.AddSettlement(groupName, paidFlagFrom, paidFlagTo, paidFlagAmount); err != nil {
+				errExit(err.Error())
+			}
+		} else {
+			g, err := models.GetGroup(groupName)
+			if err != nil {
+				errExit(err.Error())
+			}
+			if _, err := models.GetMemberByName(g.ID, paidFlagFrom); err != nil {
+				errExit(fmt.Sprintf("member %q not found", paidFlagFrom))
+			}
+			if _, err := models.GetMemberByName(g.ID, paidFlagTo); err != nil {
+				errExit(fmt.Sprintf("member %q not found", paidFlagTo))
+			}
+			if err := models.AddSettlement(g.ID, paidFlagFrom, paidFlagTo, paidFlagAmount); err != nil {
+				errExit(err.Error())
+			}
 		}
 
-		// Validate members exist
-		if _, err := models.GetMemberByName(g.ID, paidFlagFrom); err != nil {
-			errExit(fmt.Sprintf("member %q not found", paidFlagFrom))
+		var sym string
+		if g, err := getGroup(groupName); err == nil {
+			sym = g.CurrencySymbol()
 		}
-		if _, err := models.GetMemberByName(g.ID, paidFlagTo); err != nil {
-			errExit(fmt.Sprintf("member %q not found", paidFlagTo))
-		}
-
-		if err := models.AddSettlement(g.ID, paidFlagFrom, paidFlagTo, paidFlagAmount); err != nil {
-			errExit(err.Error())
-		}
-
-		sym := g.CurrencySymbol()
 		fmt.Printf("%s Recorded: %s paid %s → %s\n",
 			StyleSuccess.Render("✓"),
 			StyleRed.Render(paidFlagFrom),

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pranavtyagi/govin/internal/api"
 	"github.com/pranavtyagi/govin/internal/config"
 	"github.com/pranavtyagi/govin/internal/db"
 	"github.com/pranavtyagi/govin/internal/models"
@@ -24,6 +25,9 @@ var (
 	StyleYellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 )
 
+// RemoteClient is non-nil when GOVIN_SERVER is set — cmd files use it instead of local models.
+var RemoteClient *api.Client
+
 var rootCmd = &cobra.Command{
 	Use:   "govin",
 	Short: "govin — local-first group expense splitter",
@@ -41,9 +45,17 @@ Quick start:
 }
 
 func Execute() {
-	if err := db.Init(); err != nil {
-		fmt.Fprintln(os.Stderr, StyleError.Render("Error: "+err.Error()))
-		os.Exit(1)
+	serverURL := os.Getenv("GOVIN_SERVER")
+	if serverURL != "" {
+		// Remote mode: point at a running govin server — no local DB needed.
+		RemoteClient = api.NewClient(serverURL)
+		fmt.Println(StyleMuted.Render("→ Remote mode: " + serverURL))
+	} else {
+		// Local mode: init SQLite.
+		if err := db.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, StyleError.Render("Error: "+err.Error()))
+			os.Exit(1)
+		}
 	}
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -81,6 +93,14 @@ func resolveGroup(flagValue string) string {
 	return active
 }
 
+// getGroup fetches a group — from remote server or local DB depending on mode.
+func getGroup(name string) (*models.Group, error) {
+	if RemoteClient != nil {
+		return RemoteClient.GetGroup(name)
+	}
+	return models.GetGroup(name)
+}
+
 // useCmd sets the active group.
 var useCmd = &cobra.Command{
 	Use:   "use <group>",
@@ -88,7 +108,7 @@ var useCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
-		if _, err := models.GetGroup(name); err != nil {
+		if _, err := getGroup(name); err != nil {
 			errExit(fmt.Sprintf("group %q not found — create it with: govin group create %q", name, name))
 		}
 		if err := config.SetActiveGroup(name); err != nil {

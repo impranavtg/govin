@@ -20,11 +20,21 @@ var memberAddCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		groupName := resolveGroup(memberAddGroup)
+		if RemoteClient != nil {
+			for _, name := range args {
+				_, err := RemoteClient.GetOrCreateMember(groupName, name)
+				if err != nil {
+					fmt.Println(StyleError.Render("  ✗ "+name) + " — " + err.Error())
+					continue
+				}
+				fmt.Println(StyleSuccess.Render("  ✓") + " Added " + StyleBold.Render(name))
+			}
+			return
+		}
 		g, err := models.GetGroup(groupName)
 		if err != nil {
 			errExit(err.Error())
 		}
-
 		for _, name := range args {
 			_, err := models.AddMember(g.ID, name)
 			if err != nil {
@@ -43,11 +53,17 @@ var memberListCmd = &cobra.Command{
 	Short: "List members in the active group (or use --group)",
 	Run: func(cmd *cobra.Command, args []string) {
 		groupName := resolveGroup(memberListGroup)
-		g, err := models.GetGroup(groupName)
-		if err != nil {
-			errExit(err.Error())
+		var members []models.Member
+		var err error
+		if RemoteClient != nil {
+			members, err = RemoteClient.ListMembers(groupName)
+		} else {
+			g, gerr := models.GetGroup(groupName)
+			if gerr != nil {
+				errExit(gerr.Error())
+			}
+			members, err = models.ListMembers(g.ID)
 		}
-		members, err := models.ListMembers(g.ID)
 		if err != nil {
 			errExit(err.Error())
 		}

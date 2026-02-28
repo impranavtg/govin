@@ -6,7 +6,7 @@
 
 *A privacy-first Splitwise alternative built in Go.*
 
-**CLI** · **Telegram Bot** · **Export/Import**
+**CLI** · **Telegram Bot** · **Server Mode** · **Export/Import**
 
 </div>
 
@@ -306,6 +306,8 @@ You can add the bot to a **Telegram group** so all friends can add expenses toge
 
 ## CLI vs Telegram — Command Cheatsheet
 
+> Set `export GOVIN_SERVER=http://host:8080` to transparently use a remote server for all CLI commands.
+
 | Action | CLI | Telegram |
 |---|---|---|
 | Create group | `govin group create "Trip" --currency "₹"` | `/newgroup Trip ₹` |
@@ -326,13 +328,43 @@ You can add the bot to a **Telegram group** so all friends can add expenses toge
 
 ## Sharing with Friends
 
-### Option 1 — Telegram Bot *(recommended for groups)*
+### Option 1 — `govin serve` *(real-time, recommended)*
 
-Run the bot on your machine. Everyone chats with it via Telegram — no install needed on their end. All expenses go into one database, zero corruption risk.
+One person runs the server, everyone else points their CLI at it. All changes are instant — no import/export needed.
+
+**Host (runs the server):**
+```bash
+govin serve --port 8080
+# Server starts: 🌐 govin server listening on :8080
+```
+
+**Friends (connect to the server):**
+```bash
+export GOVIN_SERVER=http://<host-ip>:8080
+# Now all commands talk to the server automatically
+govin group list
+govin balance
+govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob,Charlie"
+```
+
+**How to find your IP:**
+```bash
+# macOS / Linux
+ipconfig getifaddr en0   # WiFi IP — share this with friends on the same network
+# or for internet access, use your public IP or run on Railway/VPS
+```
+
+> 💡 All govin commands work identically in remote mode — same flags, same output. The only difference is `export GOVIN_SERVER=...` at the start.
+
+---
+
+### Option 2 — Telegram Bot *(best for phone users)*
+
+Run the bot on your machine or a server. Everyone chats with the same bot, and all expenses go into the same database. No setup for your friends — they just open Telegram and type commands.
 
 See [Telegram Bot](#telegram-bot-) section above for setup.
 
-### Option 2 — JSON Export/Import *(async, works offline)*
+### Option 3 — JSON Export/Import *(async, works offline)*
 
 ```
 You:    govin export --output trip.json

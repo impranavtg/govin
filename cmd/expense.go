@@ -42,11 +42,66 @@ Run: func(cmd *cobra.Command, args []string) {
 description := args[0]
 groupName := resolveGroup(addGroup)
 
-g, err := models.GetGroup(groupName)
+g, err := getGroup(groupName)
 if err != nil {
 errExit(err.Error())
 }
 
+var splits []models.ExpenseSplit
+
+if RemoteClient != nil {
+	// In remote mode, resolve members via server; send name-only splits.
+	switch {
+	case addEqual:
+		names := strings.Split(addWith, ",")
+		if addWith == "" {
+			// fallback: list members from server
+			mems, merr := RemoteClient.ListMembers(groupName)
+			if merr != nil {
+				errExit(merr.Error())
+			}
+			splits = buildEqualSplits(mems, addAmount)
+		} else {
+			var withMembers []models.Member
+			for _, n := range names {
+				n = strings.TrimSpace(n)
+				m, merr := RemoteClient.GetOrCreateMember(groupName, n)
+				if merr != nil {
+					errExit("could not add member " + n + ": " + merr.Error())
+				}
+				withMembers = append(withMembers, *m)
+			}
+			splits = buildEqualSplits(withMembers, addAmount)
+		}
+	case addAmounts != "":
+		splits, err = buildExactSplitsRemote(groupName, addAmounts, addAmount)
+		if err != nil {
+			errExit(err.Error())
+		}
+	case addPercent != "":
+		splits, err = buildPercentSplitsRemote(groupName, addPercent, addAmount)
+		if err != nil {
+			errExit(err.Error())
+		}
+	default:
+		errExit("specify a split mode: --equal, --amounts, or --percent")
+	}
+	expense, rerr := RemoteClient.AddExpense(groupName, description, addAmount, addPaidBy, splits)
+	if rerr != nil {
+		errExit(rerr.Error())
+	}
+	sym := g.CurrencySymbol()
+	fmt.Println(StyleSuccess.Render("✓") + " Added expense " + StyleBold.Render(description) +
+	" — " + StyleCyan.Render(fmt.Sprintf("%s%.2f", sym, expense.Amount)) + " paid by " + StyleBold.Render(addPaidBy))
+	fmt.Println()
+	fmt.Println(StyleBold.Render("Split:"))
+	for _, s := range expense.Splits {
+	fmt.Printf("  %-15s %s%.2f\n", s.Name, sym, s.Amount)
+	}
+	return
+}
+
+// Local mode
 // Auto-create payer if they don't exist
 if _, err := models.GetOrCreateMember(g.ID, addPaidBy); err != nil {
 errExit("could not create member: " + err.Error())
@@ -56,8 +111,6 @@ members, err := models.ListMembers(g.ID)
 if err != nil {
 errExit(err.Error())
 }
-
-var splits []models.ExpenseSplit
 
 switch {
 case addEqual:
@@ -197,11 +250,16 @@ Use:   "list",
 Short: "List expenses in the active group",
 Run: func(cmd *cobra.Command, args []string) {
 groupName := resolveGroup(listFlagGroup)
-g, err := models.GetGroup(groupName)
+g, err := getGroup(groupName)
 if err != nil {
 errExit(err.Error())
 }
-expenses, err := models.ListExpenses(g.ID)
+var expenses []models.Expense
+if RemoteClient != nil {
+expenses, err = RemoteClient.ListExpenses(groupName)
+} else {
+expenses, err = models.ListExpenses(g.ID)
+}
 if err != nil {
 errExit(err.Error())
 }
@@ -234,7 +292,13 @@ Use:   "delete <expense-id>",
 Short: "Delete an expense by ID (use first 8 chars from list)",
 Args:  cobra.ExactArgs(1),
 Run: func(cmd *cobra.Command, args []string) {
-if err := models.DeleteExpense(args[0]); err != nil {
+var err error
+if RemoteClient != nil {
+err = RemoteClient.DeleteExpense(args[0])
+} else {
+err = models.DeleteExpense(args[0])
+}
+if err != nil {
 errExit(err.Error())
 }
 fmt.Println(StyleSuccess.Render("✓") + " Expense deleted")
@@ -253,4 +317,61 @@ addCmd.MarkFlagRequired("paid-by")
 addCmd.MarkFlagRequired("amount")
 
 listCmd.Flags().StringVarP(&listFlagGroup, "group", "g", "", "Group name (uses active group if not set)")
+}
+
+// buildExactSplitsRemote builds exact splits using remote server member resolution.
+func buildExactSplitsRemote(groupName, spec string, total float64) ([]models.ExpenseSplit, error) {
+parts := strings.Split(spec, ",")
+var splits []models.ExpenseSplit
+var sum float64
+for _, p := range parts {
+kv := strings.SplitN(strings.TrimSpace(p), ":", 2)
+if len(kv) != 2 {
+return nil, fmt.Errorf("invalid --amounts format %q, use Name:amount", p)
+}
+name := strings.TrimSpace(kv[0])
+amount, err := strconv.ParseFloat(strings.TrimSpace(kv[1]), 64)
+if err != nil {
+return nil, fmt.Errorf("invalid amount for %q: %s", name, kv[1])
+}
+m, err := RemoteClient.GetOrCreateMember(groupName, name)
+if err != nil {
+return nil, fmt.Errorf("could not create member %q", name)
+}
+splits = append(splits, models.ExpenseSplit{MemberID: m.ID, Name: m.Name, Amount: amount})
+sum += amount
+}
+if math.Abs(sum-total) > 0.02 {
+return nil, fmt.Errorf("amounts sum to %.2f but expense is %.2f", sum, total)
+}
+return splits, nil
+}
+
+// buildPercentSplitsRemote builds percent splits using remote server member resolution.
+func buildPercentSplitsRemote(groupName, spec string, total float64) ([]models.ExpenseSplit, error) {
+parts := strings.Split(spec, ",")
+var splits []models.ExpenseSplit
+var pctSum float64
+for _, p := range parts {
+kv := strings.SplitN(strings.TrimSpace(p), ":", 2)
+if len(kv) != 2 {
+return nil, fmt.Errorf("invalid --percent format %q, use Name:percent", p)
+}
+name := strings.TrimSpace(kv[0])
+pct, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(kv[1], "%")), 64)
+if err != nil {
+return nil, fmt.Errorf("invalid percentage for %q: %s", name, kv[1])
+}
+m, err := RemoteClient.GetOrCreateMember(groupName, name)
+if err != nil {
+return nil, fmt.Errorf("could not create member %q", name)
+}
+amount := math.Round((pct/100*total)*100) / 100
+splits = append(splits, models.ExpenseSplit{MemberID: m.ID, Name: m.Name, Amount: amount})
+pctSum += pct
+}
+if math.Abs(pctSum-100) > 0.5 {
+return nil, fmt.Errorf("percentages sum to %.1f%%, must be 100%%", pctSum)
+}
+return splits, nil
 }

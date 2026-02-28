@@ -15,14 +15,30 @@ var balanceCmd = &cobra.Command{
 	Short: "Show net balances for the active group",
 	Run: func(cmd *cobra.Command, args []string) {
 		groupName := resolveGroup(balanceFlagGroup)
-		g, err := models.GetGroup(groupName)
-		if err != nil {
-			errExit(err.Error())
-		}
 
-		balances, err := models.ComputeBalances(g.ID)
-		if err != nil {
-			errExit(err.Error())
+		var balances map[string]float64
+		var sym string
+		var err error
+
+		if RemoteClient != nil {
+			balances, err = RemoteClient.ComputeBalances(groupName)
+			if err != nil {
+				errExit(err.Error())
+			}
+			g, gerr := RemoteClient.GetGroup(groupName)
+			if gerr == nil {
+				sym = g.CurrencySymbol()
+			}
+		} else {
+			g, gerr := models.GetGroup(groupName)
+			if gerr != nil {
+				errExit(gerr.Error())
+			}
+			sym = g.CurrencySymbol()
+			balances, err = models.ComputeBalances(g.ID)
+			if err != nil {
+				errExit(err.Error())
+			}
 		}
 
 		if len(balances) == 0 {
@@ -30,11 +46,9 @@ var balanceCmd = &cobra.Command{
 			return
 		}
 
-		sym := g.CurrencySymbol()
-		fmt.Println(StyleTitle.Render("Balances — " + g.Name))
+		fmt.Println(StyleTitle.Render("Balances — " + groupName))
 		fmt.Println()
 
-		// Sort by name for consistent display
 		names := make([]string, 0, len(balances))
 		for n := range balances {
 			names = append(names, n)
