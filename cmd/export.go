@@ -15,11 +15,11 @@ import (
 
 // ExportData is the portable JSON schema for a group's full state.
 type ExportData struct {
-	Version   int             `json:"version"`
-	ExportedAt time.Time      `json:"exported_at"`
-	Group     ExportGroup     `json:"group"`
-	Members   []ExportMember  `json:"members"`
-	Expenses  []ExportExpense `json:"expenses"`
+	Version    int             `json:"version"`
+	ExportedAt time.Time       `json:"exported_at"`
+	Group      ExportGroup     `json:"group"`
+	Members    []ExportMember  `json:"members"`
+	Expenses   []ExportExpense `json:"expenses"`
 }
 
 type ExportGroup struct {
@@ -33,12 +33,12 @@ type ExportMember struct {
 }
 
 type ExportExpense struct {
-	ID          string          `json:"id"`
-	Description string          `json:"description"`
-	Amount      float64         `json:"amount"`
-	PaidBy      string          `json:"paid_by"`
-	CreatedAt   time.Time       `json:"created_at"`
-	Splits      []ExportSplit   `json:"splits"`
+	ID          string        `json:"id"`
+	Description string        `json:"description"`
+	Amount      float64       `json:"amount"`
+	PaidBy      string        `json:"paid_by"`
+	CreatedAt   time.Time     `json:"created_at"`
+	Splits      []ExportSplit `json:"splits"`
 }
 
 type ExportSplit struct {

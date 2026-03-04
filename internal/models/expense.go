@@ -189,7 +189,7 @@ func ComputeBalances(groupID string) (map[string]float64, error) {
 			return nil, err
 		}
 		balances[from] += amount // from_member paid, so their debt decreases
-		balances[to] -= amount  // to_member received, so their credit decreases
+		balances[to] -= amount   // to_member received, so their credit decreases
 	}
 
 	// Remove zero balances

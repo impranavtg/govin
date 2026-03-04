@@ -27,7 +27,6 @@ func Init() error {
 		return fmt.Errorf("cannot open database: %w", err)
 	}
 
-
 	DB = db
 	return migrate()
 }

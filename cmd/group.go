@@ -34,7 +34,7 @@ var groupCreateCmd = &cobra.Command{
 		}
 		msg := StyleSuccess.Render("✓") + " Group " + StyleBold.Render(g.Name) + " created"
 		if g.Currency != "" {
-			msg += StyleMuted.Render(" (currency: "+g.Currency+")")
+			msg += StyleMuted.Render(" (currency: " + g.Currency + ")")
 		}
 		fmt.Println(msg)
 		fmt.Println(StyleMuted.Render("  Tip: run `govin use \"" + g.Name + "\"` to skip --group on every command"))
