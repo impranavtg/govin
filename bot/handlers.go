@@ -163,15 +163,15 @@ func handleMenuCallback(c tele.Context) error {
 	action := c.Callback().Data
 	var err error
 	switch action {
-	case "add":
+	case "menu_add":
 		err = handleAdd(c)
-	case "expenses":
+	case "menu_expenses":
 		err = renderExpensesPage(c, 1, false)
-	case "balance":
+	case "menu_balance":
 		err = handleBalance(c)
-	case "settle":
+	case "menu_settle":
 		err = handleSettle(c)
-	case "help":
+	case "menu_help":
 		c.Respond()
 		return reply(c, `📖 *govin commands*
 
@@ -181,19 +181,19 @@ func handleMenuCallback(c tele.Context) error {
 /use <group> — Set active group
 
 *Expenses*
-/add — Interactive wizard
+/add — Interactive wizard (step-by-step)
 /addexact <desc> <amt> <paidBy> <Name:amt,...>
 /addpercent <desc> <amt> <paidBy> <Name:pct,...>
 
 *View*
-/expenses — Paginated list
-/balance — Who owes what
-/settle — Minimal payment plan
+/expenses — Paginated list with buttons
+/balance — Who owes what (+ Log Payment button)
+/settle — Minimal payment plan (+ Log Payment button)
 
 *Record payment*
 /paid <from> <to> <amount>
 
-/cancel — Cancel any action`)
+/cancel — Cancel any active wizard`)
 	}
 	c.Respond()
 	return err
@@ -210,18 +210,19 @@ func handleHelp(c tele.Context) error {
 /use <group> — Set active group
 
 *Expenses*
-/add <desc> <amount> <paidBy> <split with> — Equal split
-/addexact <desc> <amount> <paidBy> <Name:amt,...> — Exact split
-/addpercent <desc> <amount> <paidBy> <Name:pct,...> — % split
+/add — Interactive wizard (run without arguments)
+/addexact <desc> <amt> <paidBy> <Name:amt,...>
+/addpercent <desc> <amt> <paidBy> <Name:pct,...>
 
 *View*
 /members — List members
-/expenses — List expenses
-/balance — Who owes what
-/settle — Minimum payment plan
+/expenses — Paginated list with buttons
+/balance — Who owes what (+ Log Payment button)
+/settle — Minimum settlement plan
 
 *Record payment*
-/paid <from> <to> <amount>`)
+/paid <from> <to> <amount>
+/cancel — Abort any active wizard`)
 }
 
 // --- /newgroup ---
