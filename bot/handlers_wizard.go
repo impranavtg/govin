@@ -13,9 +13,14 @@ import (
 // --- /add (Interactive Wizard) ---
 
 func handleAdd(c tele.Context) error {
-	_, err := requireGroup(c)
+	g, err := requireGroup(c)
 	if err != nil {
 		return replyErr(c, err.Error())
+	}
+
+	members, _ := models.ListMembers(g.ID)
+	if len(members) < 2 {
+		c.Send("⚠️ *Note:* You are the only member in this group right now! You might want to use `/addmember` before adding expenses.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
 	// Start a fresh session
@@ -113,6 +118,10 @@ func handleTextReply(c tele.Context) error {
 
 	case 3: // Waiting for Payer
 		session.PaidBy = strings.TrimSpace(text)
+
+		// Auto-add the member if they were typed in
+		models.GetOrCreateMember(g.ID, session.PaidBy)
+
 		session.Step = 4
 		setSession(c.Chat().ID, session)
 
@@ -132,10 +141,10 @@ func handleTextReply(c tele.Context) error {
 
 		if splitType == "EQUAL" {
 			members, _ := models.ListMembers(g.ID)
-			if len(members) == 0 {
-				models.GetOrCreateMember(g.ID, session.PaidBy)
-				members, _ = models.ListMembers(g.ID)
-			}
+
+			// Always ensure the payer is in the members list
+			models.GetOrCreateMember(g.ID, session.PaidBy)
+			members, _ = models.ListMembers(g.ID)
 
 			splits := buildEqualSplits(members, session.Amount)
 
@@ -184,8 +193,8 @@ func handleWizardPayer(c tele.Context) error {
 	session.Step = 4
 	setSession(c.Chat().ID, session)
 
-	// Update the message we just clicked so they know it registered
-	c.Edit(fmt.Sprintf("Who paid for *%s* (%.2f)?\n✅ *%s*", session.Description, session.Amount, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	// Update the message we just clicked so they know it registered, and remove keyboard
+	c.Edit(fmt.Sprintf("Who paid for *%s* (%.2f)?\n✅ *%s*", session.Description, session.Amount, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: &tele.ReplyMarkup{}})
 
 	// Ask how to split
 	menu := &tele.ReplyMarkup{}
@@ -212,12 +221,8 @@ func handleWizardSplit(c tele.Context) error {
 	fmt.Printf("DEBUG handleWizardSplit: c.Data() = %q\n", splitType)
 
 	if splitType == "EQUAL" {
+		models.GetOrCreateMember(g.ID, session.PaidBy) // Always ensure payer is a member
 		members, _ := models.ListMembers(g.ID)
-		if len(members) == 0 {
-			// fallback - shouldn't happen if payer exists, but just in case
-			models.GetOrCreateMember(g.ID, session.PaidBy)
-			members, _ = models.ListMembers(g.ID)
-		}
 
 		splits := buildEqualSplits(members, session.Amount)
 
@@ -310,7 +315,7 @@ func handleWizardPaidTo(c tele.Context) error {
 	session.Step = 2
 	setSession(c.Chat().ID, session)
 
-	c.Edit(fmt.Sprintf("Who is making the payment?\n✅ *%s*", session.Description), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	c.Edit(fmt.Sprintf("Who is making the payment?\n✅ *%s*", session.Description), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: &tele.ReplyMarkup{}})
 
 	members, _ := models.ListMembers(g.ID)
 	var row []tele.Btn
@@ -352,7 +357,7 @@ func handleWizardPaidAmt(c tele.Context) error {
 	session.Step = 3
 	setSession(c.Chat().ID, session)
 
-	c.Edit(fmt.Sprintf("Who is *%s* paying?\n✅ *%s*", session.Description, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	c.Edit(fmt.Sprintf("Who is *%s* paying?\n✅ *%s*", session.Description, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: &tele.ReplyMarkup{}})
 
 	c.Send(fmt.Sprintf("How much is *%s* paying to *%s*?\n\n_Type the amount below, or type /cancel to stop._", session.Description, session.PaidBy), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,

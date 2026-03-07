@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/impranavtg/govin/internal/models"
@@ -16,12 +17,16 @@ func handleNewGroup(c tele.Context) error {
 		return replyErr(c, "Usage: /newgroup <name> [currency]\nExample: `/newgroup \"Goa Trip\" ₹`")
 	}
 
-	// Last arg might be a currency symbol (single char or short like IDR)
 	var name, currency string
 	if len(args) >= 2 {
 		last := args[len(args)-1]
-		// Heuristic: if last arg is ≤3 chars or a known symbol, treat as currency
-		if len(last) <= 4 || isCurrencySymbol(last) {
+		// Heuristic: if last arg is <=4 chars OR a known symbol, AND it's not just a number, treat as currency
+		isNumber := false
+		if _, err := strconv.ParseFloat(last, 64); err == nil {
+			isNumber = true
+		}
+
+		if !isNumber && (len(last) <= 4 || isCurrencySymbol(last)) {
 			currency = last
 			name = strings.Join(args[:len(args)-1], " ")
 		} else {
@@ -34,6 +39,17 @@ func handleNewGroup(c tele.Context) error {
 	g, err := models.CreateGroup(name, currency)
 	if err != nil {
 		return replyErr(c, fmt.Sprintf("Could not create group: %s", err))
+	}
+
+	// Auto-add the creator to the group
+	creatorName := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		creatorName += " " + c.Sender().LastName
+	}
+	_, err = models.GetOrCreateMember(g.ID, creatorName)
+	if err != nil {
+		// Log the error but don't fail group creation
+		fmt.Printf("Warning: Failed to auto-add creator to group %s: %v\n", g.Name, err)
 	}
 
 	// Auto-set as active

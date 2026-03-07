@@ -81,7 +81,7 @@ func handleSettle(c tele.Context) error {
 		lines = append(lines, fmt.Sprintf("  %d. *%s* → *%s*  %s%.2f", i+1, p.From, p.To, sym, p.Amount))
 	}
 
-	msg := fmt.Sprintf("🧮 *Settlement Plan — %s*\n_%d payment(s) needed_\n\n%s\n\nRecord with: /paid <from> <to> <amount>",
+	msg := fmt.Sprintf("🧮 *Settlement Plan — %s*\n_%d payment(s) needed_\n\n%s",
 		g.Name, len(payments), strings.Join(lines, "\n"))
 
 	menu := &tele.ReplyMarkup{}
