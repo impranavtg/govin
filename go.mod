@@ -1,4 +1,4 @@
-module github.com/pranavtyagi/govin
+module github.com/impranavtg/govin
 
 go 1.25.5
 

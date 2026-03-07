@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pranavtyagi/govin/bot"
+	"github.com/impranavtg/govin/bot"
 	"github.com/spf13/cobra"
 )
 

@@ -5,8 +5,8 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/pranavtyagi/govin/internal/config"
-	"github.com/pranavtyagi/govin/internal/models"
+	"github.com/impranavtg/govin/internal/config"
+	"github.com/impranavtg/govin/internal/models"
 	"github.com/spf13/cobra"
 )
 

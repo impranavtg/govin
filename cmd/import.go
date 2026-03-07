@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/pranavtyagi/govin/internal/db"
-	"github.com/pranavtyagi/govin/internal/models"
+	"github.com/impranavtg/govin/internal/db"
+	"github.com/impranavtg/govin/internal/models"
 	"github.com/spf13/cobra"
 )
 

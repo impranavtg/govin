@@ -1,6 +1,6 @@
 package main
 
-import "github.com/pranavtyagi/govin/cmd"
+import "github.com/impranavtg/govin/cmd"
 
 func main() {
 	cmd.Execute()

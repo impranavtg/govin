@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/pranavtyagi/govin/internal/models"
-	"github.com/pranavtyagi/govin/internal/settler"
+	"github.com/impranavtg/govin/internal/models"
+	"github.com/impranavtg/govin/internal/settler"
 )
 
 // Client calls the govin HTTP server instead of local SQLite.

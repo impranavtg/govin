@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/pranavtyagi/govin/internal/models"
-	"github.com/pranavtyagi/govin/internal/settler"
+	"github.com/impranavtg/govin/internal/models"
+	"github.com/impranavtg/govin/internal/settler"
 )
 
 func jsonErr(w http.ResponseWriter, msg string, code int) {

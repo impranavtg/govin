@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pranavtyagi/govin/internal/api"
+	"github.com/impranavtg/govin/internal/api"
 	"github.com/spf13/cobra"
 )
 

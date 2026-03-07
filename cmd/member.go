@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/pranavtyagi/govin/internal/models"
+	"github.com/impranavtg/govin/internal/models"
 	"github.com/spf13/cobra"
 )
 

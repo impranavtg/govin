@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pranavtyagi/govin/internal/db"
+	"github.com/impranavtg/govin/internal/db"
 	tele "gopkg.in/telebot.v3"
 )
 

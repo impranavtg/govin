@@ -4,7 +4,7 @@
 
 **Split group expenses with friends — no account, no cloud, fully local.**
 
-*A privacy-first Splitwise alternative built in Go.*
+_A privacy-first Splitwise alternative built in Go._
 
 **CLI** · **Telegram Bot** · **Server Mode** · **Export/Import**
 
@@ -22,16 +22,16 @@ Use it from the **terminal** when you're at your desk, or from **Telegram** when
 
 ## Features
 
-| | |
-|---|---|
-| 🏷️ **Currency-aware** | Set any currency per group — `₹`, `$`, `€`, `IDR`, anything |
-| ⚡ **Active group** | Set a default group so you skip `--group` on every command |
-| 👤 **Auto-create members** | Members are created on the fly — no separate setup step |
-| ➗ **3 split modes** | Equal, exact amounts, or percentage |
-| 🧮 **Smart settlement** | Debt minimization — finds the fewest payments needed to settle up |
-| 📤 **Export** | JSON or CSV — format auto-detected from file extension |
-| 📥 **Import + merge** | UUID deduplication — safe to re-import the same file multiple times |
-| 🤖 **Telegram bot** | Manage expenses from your phone — no laptop needed |
+|                            |                                                                     |
+| -------------------------- | ------------------------------------------------------------------- |
+| 🏷️ **Currency-aware**      | Set any currency per group — `₹`, `$`, `€`, `IDR`, anything         |
+| ⚡ **Active group**        | Set a default group so you skip `--group` on every command          |
+| 👤 **Auto-create members** | Members are created on the fly — no separate setup step             |
+| ➗ **3 split modes**       | Equal, exact amounts, or percentage                                 |
+| 🧮 **Smart settlement**    | Debt minimization — finds the fewest payments needed to settle up   |
+| 📤 **Export**              | JSON or CSV — format auto-detected from file extension              |
+| 📥 **Import + merge**      | UUID deduplication — safe to re-import the same file multiple times |
+| 🤖 **Telegram bot**        | Manage expenses from your phone — no laptop needed                  |
 
 ---
 
@@ -50,22 +50,25 @@ Use it from the **terminal** when you're at your desk, or from **Telegram** when
 ## Install
 
 ```bash
-go install github.com/pranavtyagi/govin@latest
+go install github.com/impranavtg/govin@latest
 ```
 
 Make sure `~/go/bin` is in your PATH (add to `~/.zshrc` or `~/.bashrc`):
+
 ```bash
 echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 **Or build from source:**
+
 ```bash
-git clone https://github.com/pranavtyagi/govin
+git clone https://github.com/impranavtg/govin
 cd govin
 go build -o govin .
 ```
 
 Verify installation:
+
 ```bash
 govin --help
 ```
@@ -113,21 +116,21 @@ govin use "Goa Trip"
 
 ### Groups
 
-| Command | What it does |
-|---|---|
-| `govin group create "Goa Trip" --currency "₹"` | Create a group (`--currency` is optional) |
-| `govin group list` | List all groups (`▶` marks the active one) |
-| `govin group show "Goa Trip"` | Show members + expense count |
-| `govin group delete "Goa Trip"` | Delete group and all its data |
+| Command                                        | What it does                               |
+| ---------------------------------------------- | ------------------------------------------ |
+| `govin group create "Goa Trip" --currency "₹"` | Create a group (`--currency` is optional)  |
+| `govin group list`                             | List all groups (`▶` marks the active one) |
+| `govin group show "Goa Trip"`                  | Show members + expense count               |
+| `govin group delete "Goa Trip"`                | Delete group and all its data              |
 
 ---
 
 ### Members
 
-| Command | What it does |
-|---|---|
-| `govin member add Alice Bob Charlie` | Add members to active group |
-| `govin member list` | List members in active group |
+| Command                              | What it does                 |
+| ------------------------------------ | ---------------------------- |
+| `govin member add Alice Bob Charlie` | Add members to active group  |
+| `govin member list`                  | List members in active group |
 
 > 💡 You can skip `member add` entirely — members are auto-created when you reference them in an expense.
 
@@ -136,21 +139,25 @@ govin use "Goa Trip"
 ### Expenses
 
 **Equal split** — list who to split with:
+
 ```bash
 govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob,Charlie"
 ```
 
 **Exact amounts** per person (must sum to total):
+
 ```bash
 govin add "Dinner" --paid-by Bob --amount 1200 --amounts "Alice:400,Bob:400,Charlie:400"
 ```
 
 **Percentage split** (must sum to 100):
+
 ```bash
 govin add "Taxi" --paid-by Charlie --amount 600 --percent "Alice:50,Bob:25,Charlie:25"
 ```
 
 **View and delete:**
+
 ```bash
 govin list                    # List all expenses in active group
 govin delete <expense-id>     # Delete by first 8 chars of ID (shown in list)
@@ -206,6 +213,7 @@ govin bot
 ```
 
 You should see:
+
 ```
 🤖 govin bot is running — press Ctrl+C to stop
 ```
@@ -223,21 +231,21 @@ You should see:
 
 ### Bot Commands
 
-| Command | What it does | Example |
-|---|---|---|
-| `/start` | Welcome message + instructions | `/start` |
-| `/help` | Show all available commands | `/help` |
-| `/newgroup <name> [currency]` | Create a new group | `/newgroup Goa Trip ₹` |
-| `/groups` | List all groups (`▶` = active) | `/groups` |
-| `/use <group>` | Set the active group | `/use Goa Trip` |
-| `/members` | List members in active group | `/members` |
-| `/add <desc> <amount> <paidBy> <people>` | Add expense (equal split) | `/add Hotel 9000 Alice Alice,Bob,Charlie` |
-| `/addexact <desc> <amount> <paidBy> <splits>` | Add expense (exact amounts) | `/addexact Dinner 1200 Bob Alice:400,Bob:400,Charlie:400` |
-| `/addpercent <desc> <amount> <paidBy> <splits>` | Add expense (% split) | `/addpercent Taxi 600 Charlie Alice:50,Bob:25,Charlie:25` |
-| `/expenses` | List all expenses | `/expenses` |
-| `/balance` | Show who owes what | `/balance` |
-| `/settle` | Minimum payment plan | `/settle` |
-| `/paid <from> <to> <amount>` | Record a settlement payment | `/paid Bob Alice 3000` |
+| Command                                         | What it does                   | Example                                                   |
+| ----------------------------------------------- | ------------------------------ | --------------------------------------------------------- |
+| `/start`                                        | Welcome message + instructions | `/start`                                                  |
+| `/help`                                         | Show all available commands    | `/help`                                                   |
+| `/newgroup <name> [currency]`                   | Create a new group             | `/newgroup Goa Trip ₹`                                    |
+| `/groups`                                       | List all groups (`▶` = active) | `/groups`                                                 |
+| `/use <group>`                                  | Set the active group           | `/use Goa Trip`                                           |
+| `/members`                                      | List members in active group   | `/members`                                                |
+| `/add <desc> <amount> <paidBy> <people>`        | Add expense (equal split)      | `/add Hotel 9000 Alice Alice,Bob,Charlie`                 |
+| `/addexact <desc> <amount> <paidBy> <splits>`   | Add expense (exact amounts)    | `/addexact Dinner 1200 Bob Alice:400,Bob:400,Charlie:400` |
+| `/addpercent <desc> <amount> <paidBy> <splits>` | Add expense (% split)          | `/addpercent Taxi 600 Charlie Alice:50,Bob:25,Charlie:25` |
+| `/expenses`                                     | List all expenses              | `/expenses`                                               |
+| `/balance`                                      | Show who owes what             | `/balance`                                                |
+| `/settle`                                       | Minimum payment plan           | `/settle`                                                 |
+| `/paid <from> <to> <amount>`                    | Record a settlement payment    | `/paid Bob Alice 3000`                                    |
 
 ---
 
@@ -308,37 +316,39 @@ You can add the bot to a **Telegram group** so all friends can add expenses toge
 
 > Set `export GOVIN_SERVER=http://host:8080` to transparently use a remote server for all CLI commands.
 
-| Action | CLI | Telegram |
-|---|---|---|
-| Create group | `govin group create "Trip" --currency "₹"` | `/newgroup Trip ₹` |
-| List groups | `govin group list` | `/groups` |
-| Set active group | `govin use "Trip"` | `/use Trip` |
-| Add equal expense | `govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob"` | `/add Hotel 9000 Alice Alice,Bob` |
+| Action            | CLI                                                                            | Telegram                                      |
+| ----------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
+| Create group      | `govin group create "Trip" --currency "₹"`                                     | `/newgroup Trip ₹`                            |
+| List groups       | `govin group list`                                                             | `/groups`                                     |
+| Set active group  | `govin use "Trip"`                                                             | `/use Trip`                                   |
+| Add equal expense | `govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob"`   | `/add Hotel 9000 Alice Alice,Bob`             |
 | Add exact expense | `govin add "Dinner" --paid-by Bob --amount 1200 --amounts "Alice:400,Bob:800"` | `/addexact Dinner 1200 Bob Alice:400,Bob:800` |
-| Add % expense | `govin add "Taxi" --paid-by Alice --amount 600 --percent "Alice:60,Bob:40"` | `/addpercent Taxi 600 Alice Alice:60,Bob:40` |
-| List expenses | `govin list` | `/expenses` |
-| View balances | `govin balance` | `/balance` |
-| Settlement plan | `govin settle` | `/settle` |
-| Record payment | `govin paid --from Bob --to Alice --amount 500` | `/paid Bob Alice 500` |
-| List members | `govin member list` | `/members` |
-| Export | `govin export --output trip.json` | *(CLI only)* |
-| Import | `govin import trip.json` | *(CLI only)* |
+| Add % expense     | `govin add "Taxi" --paid-by Alice --amount 600 --percent "Alice:60,Bob:40"`    | `/addpercent Taxi 600 Alice Alice:60,Bob:40`  |
+| List expenses     | `govin list`                                                                   | `/expenses`                                   |
+| View balances     | `govin balance`                                                                | `/balance`                                    |
+| Settlement plan   | `govin settle`                                                                 | `/settle`                                     |
+| Record payment    | `govin paid --from Bob --to Alice --amount 500`                                | `/paid Bob Alice 500`                         |
+| List members      | `govin member list`                                                            | `/members`                                    |
+| Export            | `govin export --output trip.json`                                              | _(CLI only)_                                  |
+| Import            | `govin import trip.json`                                                       | _(CLI only)_                                  |
 
 ---
 
 ## Sharing with Friends
 
-### Option 1 — `govin serve` *(real-time, recommended)*
+### Option 1 — `govin serve` _(real-time, recommended)_
 
 One person runs the server, everyone else points their CLI at it. All changes are instant — no import/export needed.
 
 **Host (runs the server):**
+
 ```bash
 govin serve --port 8080
 # Server starts: 🌐 govin server listening on :8080
 ```
 
 **Friends (connect to the server):**
+
 ```bash
 export GOVIN_SERVER=http://<host-ip>:8080
 # Now all commands talk to the server automatically
@@ -348,6 +358,7 @@ govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob,Charli
 ```
 
 **How to find your IP:**
+
 ```bash
 # macOS / Linux
 ipconfig getifaddr en0   # WiFi IP — share this with friends on the same network
@@ -358,13 +369,13 @@ ipconfig getifaddr en0   # WiFi IP — share this with friends on the same netwo
 
 ---
 
-### Option 2 — Telegram Bot *(best for phone users)*
+### Option 2 — Telegram Bot _(best for phone users)_
 
 Run the bot on your machine or a server. Everyone chats with the same bot, and all expenses go into the same database. No setup for your friends — they just open Telegram and type commands.
 
 See [Telegram Bot](#telegram-bot-) section above for setup.
 
-### Option 3 — JSON Export/Import *(async, works offline)*
+### Option 3 — JSON Export/Import _(async, works offline)_
 
 ```
 You:    govin export --output trip.json
@@ -380,11 +391,10 @@ Repeat in both directions to stay in sync. Re-importing is always safe.
 
 ## Data Storage
 
-| | Path |
-|---|---|
-| Default database | `~/.govin/data.db` |
-| Active group config (CLI) | `~/.govin/config.json` |
-| Bot sessions (Telegram) | Stored in the same `data.db` |
+|                           | Path                         |
+| ------------------------- | ---------------------------- |
+| Default database          | `~/.govin/data.db`           |
+| Active group config (CLI) | `~/.govin/config.json`       |
+| Bot sessions (Telegram)   | Stored in the same `data.db` |
 
 ---
-

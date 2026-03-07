@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pranavtyagi/govin/internal/db"
+	"github.com/impranavtg/govin/internal/db"
 )
 
 type Group struct {
