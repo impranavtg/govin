@@ -8,6 +8,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
+
 // Start initialises and runs the Telegram bot. Blocks forever.
 func Start(token string) error {
 	pref := tele.Settings{
@@ -34,6 +35,8 @@ func Start(token string) error {
 	b.Handle("\fmenu_expenses", handleMenuCallback)
 	b.Handle("\fmenu_balance", handleMenuCallback)
 	b.Handle("\fmenu_settle", handleMenuCallback)
+	b.Handle("\fmenu_members", handleMenuCallback)
+	b.Handle("\fmenu_groups", handleMenuCallback)
 	b.Handle("\fmenu_help", handleMenuCallback)
 
 	fmt.Println("🤖 govin bot is running — press Ctrl+C to stop")
