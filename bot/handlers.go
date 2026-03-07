@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/impranavtg/govin/internal/models"
 	"github.com/impranavtg/govin/internal/settler"
@@ -48,6 +49,47 @@ func requireGroup(c tele.Context) (*models.Group, error) {
 		return nil, fmt.Errorf("group %q not found — create one with /newgroup", name)
 	}
 	return g, nil
+}
+
+func parseOptionalDate(args []string) ([]string, time.Time) {
+	if len(args) == 0 {
+		return args, time.Time{}
+	}
+	lastArg := args[len(args)-1]
+	formats := []string{"2006-01-02", "02-01-2006", "02/01/2006", "2006/01/02"}
+	for _, layout := range formats {
+		if d, err := time.ParseInLocation(layout, lastArg, time.Local); err == nil {
+			return args[:len(args)-1], d // remove the date arg and return
+		}
+	}
+	return args, time.Time{}
+}
+
+// parseArgs splits a string by spaces, but keeps text inside double quotes together.
+func parseArgs(input string) []string {
+	var args []string
+	var current strings.Builder
+	inQuotes := false
+
+	for _, r := range input {
+		if r == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+		// If it's a space and we are NOT in quotes, flush the current builder
+		if (r == ' ' || r == '\t' || r == '\n' || r == '\r') && !inQuotes {
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+	return args
 }
 
 // --- /start ---
@@ -95,9 +137,9 @@ func handleHelp(c tele.Context) error {
 // --- /newgroup ---
 
 func handleNewGroup(c tele.Context) error {
-	args := strings.Fields(c.Message().Payload)
+	args := parseArgs(c.Message().Payload)
 	if len(args) == 0 {
-		return replyErr(c, "Usage: /newgroup <name> [currency]\nExample: `/newgroup Goa Trip ₹`")
+		return replyErr(c, "Usage: /newgroup <name> [currency]\nExample: `/newgroup \"Goa Trip\" ₹`")
 	}
 
 	// Last arg might be a currency symbol (single char or short like IDR)
@@ -216,9 +258,10 @@ func handleAdd(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	args := strings.Fields(c.Message().Payload)
+	args := parseArgs(c.Message().Payload)
+	args, date := parseOptionalDate(args)
 	if len(args) < 4 {
-		return replyErr(c, "Usage: /add <description> <amount> <paidBy> <split with>\nExample: `/add Hotel 9000 Alice Alice,Bob,Charlie`")
+		return replyErr(c, "Usage: /add <description> <amount> <paidBy> <split with> [date]\nExample: `/add \"Hotel\" 9000 Alice \"Alice,Bob,Charlie\" 2023-12-25`")
 	}
 
 	desc := args[0]
@@ -248,7 +291,11 @@ func handleAdd(c tele.Context) error {
 	}
 
 	splits := buildEqualSplits(members, amount)
-	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, splits)
+	createdBy := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		createdBy += " " + c.Sender().LastName
+	}
+	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, createdBy, date, splits)
 	if err != nil {
 		return replyErr(c, "Failed to add expense: "+err.Error())
 	}
@@ -259,8 +306,13 @@ func handleAdd(c tele.Context) error {
 		splitLines = append(splitLines, fmt.Sprintf("  %s: %s%.2f", s.Name, sym, s.Amount))
 	}
 
-	return reply(c, fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*\n\n*Split:*\n%s",
-		desc, sym, amount, paidBy, strings.Join(splitLines, "\n")))
+	msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*", desc, sym, amount, paidBy)
+	if paidBy != createdBy {
+		msg += fmt.Sprintf(" (Added by %s)", createdBy)
+	}
+	msg += fmt.Sprintf("\n\n*Split:*\n%s", strings.Join(splitLines, "\n"))
+
+	return reply(c, msg)
 }
 
 // --- /addexact ---
@@ -272,9 +324,10 @@ func handleAddExact(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	args := strings.Fields(c.Message().Payload)
+	args := parseArgs(c.Message().Payload)
+	args, date := parseOptionalDate(args)
 	if len(args) < 4 {
-		return replyErr(c, "Usage: /addexact <desc> <amount> <paidBy> <Name:amt,...>\nExample: `/addexact Dinner 1200 Bob Alice:400,Bob:400,Charlie:400`")
+		return replyErr(c, "Usage: /addexact <desc> <amount> <paidBy> <Name:amt,...> [date]\nExample: `/addexact \"Dinner\" 1200 Bob \"Alice:400,Bob:400,Charlie:400\" 2023-12-25`")
 	}
 
 	desc := args[0]
@@ -294,7 +347,12 @@ func handleAddExact(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, splits)
+	createdBy := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		createdBy += " " + c.Sender().LastName
+	}
+
+	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, createdBy, date, splits)
 	if err != nil {
 		return replyErr(c, "Failed to add expense: "+err.Error())
 	}
@@ -305,8 +363,13 @@ func handleAddExact(c tele.Context) error {
 		splitLines = append(splitLines, fmt.Sprintf("  %s: %s%.2f", s.Name, sym, s.Amount))
 	}
 
-	return reply(c, fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*\n\n*Split:*\n%s",
-		desc, sym, amount, paidBy, strings.Join(splitLines, "\n")))
+	msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*", desc, sym, amount, paidBy)
+	if paidBy != createdBy {
+		msg += fmt.Sprintf(" (Added by %s)", createdBy)
+	}
+	msg += fmt.Sprintf("\n\n*Split:*\n%s", strings.Join(splitLines, "\n"))
+
+	return reply(c, msg)
 }
 
 // --- /addpercent ---
@@ -318,9 +381,10 @@ func handleAddPercent(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	args := strings.Fields(c.Message().Payload)
+	args := parseArgs(c.Message().Payload)
+	args, date := parseOptionalDate(args)
 	if len(args) < 4 {
-		return replyErr(c, "Usage: /addpercent <desc> <amount> <paidBy> <Name:pct,...>\nExample: `/addpercent Taxi 600 Charlie Alice:50,Bob:25,Charlie:25`")
+		return replyErr(c, "Usage: /addpercent <desc> <amount> <paidBy> <Name:pct,...> [date]\nExample: `/addpercent \"Taxi\" 600 Charlie \"Alice:50,Bob:25,Charlie:25\" 2023-12-25`")
 	}
 
 	desc := args[0]
@@ -340,7 +404,12 @@ func handleAddPercent(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, splits)
+	createdBy := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		createdBy += " " + c.Sender().LastName
+	}
+
+	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, createdBy, date, splits)
 	if err != nil {
 		return replyErr(c, "Failed to add expense: "+err.Error())
 	}
@@ -351,8 +420,13 @@ func handleAddPercent(c tele.Context) error {
 		splitLines = append(splitLines, fmt.Sprintf("  %s: %s%.2f", s.Name, sym, s.Amount))
 	}
 
-	return reply(c, fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*\n\n*Split:*\n%s",
-		desc, sym, amount, paidBy, strings.Join(splitLines, "\n")))
+	msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*", desc, sym, amount, paidBy)
+	if paidBy != createdBy {
+		msg += fmt.Sprintf(" (Added by %s)", createdBy)
+	}
+	msg += fmt.Sprintf("\n\n*Split:*\n%s", strings.Join(splitLines, "\n"))
+
+	return reply(c, msg)
 }
 
 // --- /expenses ---
@@ -374,8 +448,12 @@ func handleExpenses(c tele.Context) error {
 	sym := g.CurrencySymbol()
 	var lines []string
 	for _, e := range expenses {
+		paidByStr := e.PaidBy
+		if e.CreatedBy != "" && e.CreatedBy != e.PaidBy && e.CreatedBy != "Me" {
+			paidByStr += fmt.Sprintf(" (Added by %s)", e.CreatedBy)
+		}
 		lines = append(lines, fmt.Sprintf("• *%s* — %s%.2f paid by %s (%s)",
-			e.Description, sym, e.Amount, e.PaidBy, e.CreatedAt.Format("Jan 02")))
+			e.Description, sym, e.Amount, paidByStr, e.CreatedAt.Format("Jan 02")))
 	}
 
 	return reply(c, fmt.Sprintf("📝 *Expenses — %s*\n\n%s", g.Name, strings.Join(lines, "\n")))
@@ -458,9 +536,9 @@ func handlePaid(c tele.Context) error {
 		return replyErr(c, err.Error())
 	}
 
-	args := strings.Fields(c.Message().Payload)
+	args := parseArgs(c.Message().Payload)
 	if len(args) < 3 {
-		return replyErr(c, "Usage: /paid <from> <to> <amount>\nExample: `/paid Bob Alice 2200`")
+		return replyErr(c, "Usage: /paid <from> <to> <amount>\nExample: `/paid \"Bob\" \"Alice\" 2200`")
 	}
 
 	from := args[0]

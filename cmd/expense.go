@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/impranavtg/govin/internal/models"
 	"github.com/spf13/cobra"
@@ -20,6 +21,7 @@ var (
 	addWith    string
 	addAmounts string
 	addPercent string
+	addDate    string
 )
 
 var addCmd = &cobra.Command{
@@ -45,6 +47,21 @@ Examples (after: govin use "Bali Trip"):
 		g, err := getGroup(groupName)
 		if err != nil {
 			errExit(err.Error())
+		}
+
+		var parsedDate time.Time
+		if addDate != "" {
+			formats := []string{"2006-01-02", "02-01-2006", "02/01/2006", "2006/01/02"}
+			var parseErr error
+			for _, layout := range formats {
+				// time.Local applies the user's timezone implicitly
+				if parsedDate, parseErr = time.ParseInLocation(layout, addDate, time.Local); parseErr == nil {
+					break
+				}
+			}
+			if parsedDate.IsZero() {
+				errExit("invalid --date format. Try YYYY-MM-DD (e.g., 2023-12-25)")
+			}
 		}
 
 		var splits []models.ExpenseSplit
@@ -86,7 +103,7 @@ Examples (after: govin use "Bali Trip"):
 			default:
 				errExit("specify a split mode: --equal, --amounts, or --percent")
 			}
-			expense, rerr := RemoteClient.AddExpense(groupName, description, addAmount, addPaidBy, splits)
+			expense, rerr := RemoteClient.AddExpense(groupName, description, addAmount, addPaidBy, "Me", parsedDate, splits)
 			if rerr != nil {
 				errExit(rerr.Error())
 			}
@@ -147,7 +164,7 @@ Examples (after: govin use "Bali Trip"):
 			errExit("specify a split mode: --equal, --amounts, or --percent")
 		}
 
-		expense, err := models.AddExpense(g.ID, description, addAmount, addPaidBy, splits)
+		expense, err := models.AddExpense(g.ID, description, addAmount, addPaidBy, "Me", parsedDate, splits)
 		if err != nil {
 			errExit(err.Error())
 		}
@@ -275,11 +292,15 @@ var listCmd = &cobra.Command{
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 		fmt.Fprintln(w, StyleBold.Render("ID\tDESCRIPTION\tAMOUNT\tPAID BY\tDATE"))
 		for _, e := range expenses {
+			paidByStr := e.PaidBy
+			if e.CreatedBy != "" && e.CreatedBy != e.PaidBy && e.CreatedBy != "Me" {
+				paidByStr += fmt.Sprintf(" (Added by %s)", e.CreatedBy)
+			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				StyleMuted.Render(e.ID[:8]),
 				e.Description,
 				StyleCyan.Render(fmt.Sprintf("%s%.2f", sym, e.Amount)),
-				StyleBold.Render(e.PaidBy),
+				StyleBold.Render(paidByStr),
 				StyleMuted.Render(e.CreatedAt.Format("Jan 02")),
 			)
 		}
@@ -313,6 +334,7 @@ func init() {
 	addCmd.Flags().StringVar(&addWith, "with", "", "Members for --equal split: Alice,Bob,Charlie (auto-creates if new)")
 	addCmd.Flags().StringVar(&addAmounts, "amounts", "", "Exact split: Alice:40,Bob:30")
 	addCmd.Flags().StringVar(&addPercent, "percent", "", "Percent split: Alice:50,Bob:50")
+	addCmd.Flags().StringVar(&addDate, "date", "", "Custom date for expense in YYYY-MM-DD format (optional)")
 	addCmd.MarkFlagRequired("paid-by")
 	addCmd.MarkFlagRequired("amount")
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/impranavtg/govin/internal/models"
 	"github.com/impranavtg/govin/internal/settler"
@@ -159,6 +160,8 @@ type addExpenseReq struct {
 	Description string                `json:"description"`
 	Amount      float64               `json:"amount"`
 	PaidBy      string                `json:"paid_by"`
+	CreatedBy   string                `json:"created_by"`
+	Date        *time.Time            `json:"date,omitempty"`
 	Splits      []models.ExpenseSplit `json:"splits"`
 }
 
@@ -206,7 +209,11 @@ func handleExpenses(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, "could not create payer", 500)
 			return
 		}
-		expense, err := models.AddExpense(g.ID, req.Description, req.Amount, req.PaidBy, req.Splits)
+		var expDate time.Time
+		if req.Date != nil {
+			expDate = *req.Date
+		}
+		expense, err := models.AddExpense(g.ID, req.Description, req.Amount, req.PaidBy, req.CreatedBy, expDate, req.Splits)
 		if err != nil {
 			jsonErr(w, err.Error(), 500)
 			return

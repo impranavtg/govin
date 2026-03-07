@@ -57,6 +57,7 @@ func migrate() error {
 		description TEXT NOT NULL,
 		amount      REAL NOT NULL,
 		paid_by     TEXT NOT NULL,
+		created_by  TEXT NOT NULL DEFAULT '',
 		created_at  DATETIME DEFAULT (datetime('now'))
 	);
 
@@ -81,6 +82,7 @@ func migrate() error {
 	}
 	// Safe migration: add currency column for existing DBs (ignored if already present).
 	DB.Exec(`ALTER TABLE groups ADD COLUMN currency TEXT NOT NULL DEFAULT ''`)
+	DB.Exec(`ALTER TABLE expenses ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 
 	// Bot sessions for Telegram bot per-chat active group tracking.
 	DB.Exec(`CREATE TABLE IF NOT EXISTS bot_sessions (

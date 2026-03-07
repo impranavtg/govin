@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/logo.png" alt="govin logo" width="250" />
+
 # govin
 
 **Split group expenses with friends — no account, no cloud, fully local.**
