@@ -21,6 +21,20 @@ func Start(token string) error {
 	}
 
 	registerHandlers(b)
+	b.Handle(tele.OnText, handleTextReply)
+	b.Handle("/cancel", handleCancel)
+	b.Handle("\fexpenses_page", handleExpensesPage)
+	b.Handle("\fadd_wiz_payer", handleWizardPayer)
+	b.Handle("\fadd_wiz_split", handleWizardSplit)
+	b.Handle("\fadd_wiz_paid_from", handleWizardPaidFrom)
+	b.Handle("\fadd_wiz_paid_to", handleWizardPaidTo)
+	b.Handle("\fadd_wiz_paid_amt", handleWizardPaidAmt)
+	b.Handle("/menu", handleMenu)
+	b.Handle("\fmenu_add", handleMenuCallback)
+	b.Handle("\fmenu_expenses", handleMenuCallback)
+	b.Handle("\fmenu_balance", handleMenuCallback)
+	b.Handle("\fmenu_settle", handleMenuCallback)
+	b.Handle("\fmenu_help", handleMenuCallback)
 
 	fmt.Println("🤖 govin bot is running — press Ctrl+C to stop")
 	b.Start() // blocks
