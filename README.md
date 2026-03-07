@@ -241,13 +241,15 @@ You should see:
 | `/groups`                                       | List all groups (`▶` = active) | `/groups`                                                 |
 | `/use <group>`                                  | Set the active group           | `/use Goa Trip`                                           |
 | `/members`                                      | List members in active group   | `/members`                                                |
-| `/add <desc> <amount> <paidBy> <people>`        | Add expense (equal split)      | `/add Hotel 9000 Alice Alice,Bob,Charlie`                 |
+| `/add`                                          | Add expense (wizard)           | `/add`                                                    |
 | `/addexact <desc> <amount> <paidBy> <splits>`   | Add expense (exact amounts)    | `/addexact Dinner 1200 Bob Alice:400,Bob:400,Charlie:400` |
 | `/addpercent <desc> <amount> <paidBy> <splits>` | Add expense (% split)          | `/addpercent Taxi 600 Charlie Alice:50,Bob:25,Charlie:25` |
-| `/expenses`                                     | List all expenses              | `/expenses`                                               |
+| `/expenses`                                     | List paginated expenses        | `/expenses`                                               |
 | `/balance`                                      | Show who owes what             | `/balance`                                                |
 | `/settle`                                       | Minimum payment plan           | `/settle`                                                 |
-| `/paid <from> <to> <amount>`                    | Record a settlement payment    | `/paid Bob Alice 3000`                                    |
+| `/paid <from> <to> <amount>`                    | Record a settlement payment    | `/paid Bob Alice 3000` (or use Log Payment button)        |
+| `/menu`                                         | Open the main dashboard        | `/menu`                                                   |
+| `/cancel`                                       | Cancel active wizard           | `/cancel`                                                 |
 
 ---
 
@@ -261,21 +263,28 @@ You:  /newgroup Goa Trip ₹
 Bot:  ✅ Group Goa Trip created (currency: ₹)
       It's now your active group. Start adding expenses!
 
-You:  /add Hotel 9000 Alice Alice,Bob,Charlie
+You:  /add
+Bot:  What is the expense for? (e.g. 'Dinner', 'Taxi')
+
+You:  Hotel
+Bot:  Got it: Hotel.
+      How much did it cost (₹)?
+
+You:  9000
+Bot:  Who paid for Hotel (9000.00)?
+      [ Alice ] [ Bob ] [ Charlie ]
+
+You:  (taps Alice)
+Bot:  How should this be split?
+      [ Split Equally (Everyone) ]
+
+You:  (taps Split Equally)
 Bot:  ✅ Hotel — ₹ 9000.00 paid by Alice
 
       Split:
         Alice: ₹ 3000.00
         Bob: ₹ 3000.00
         Charlie: ₹ 3000.00
-
-You:  /add Dinner 1500 Bob Alice,Bob,Charlie
-Bot:  ✅ Dinner — ₹ 1500.00 paid by Bob
-
-      Split:
-        Alice: ₹ 500.00
-        Bob: ₹ 500.00
-        Charlie: ₹ 500.00
 
 You:  /balance
 Bot:  💰 Balances — Goa Trip
@@ -323,7 +332,7 @@ You can add the bot to a **Telegram group** so all friends can add expenses toge
 | Create group      | `govin group create "Trip" --currency "₹"`                                     | `/newgroup Trip ₹`                            |
 | List groups       | `govin group list`                                                             | `/groups`                                     |
 | Set active group  | `govin use "Trip"`                                                             | `/use Trip`                                   |
-| Add equal expense | `govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob"`   | `/add Hotel 9000 Alice Alice,Bob`             |
+| Add equal expense | `govin add "Hotel" --paid-by Alice --amount 9000 --equal --with "Alice,Bob"`   | `/add` _(Interactive wizard)_                 |
 | Add exact expense | `govin add "Dinner" --paid-by Bob --amount 1200 --amounts "Alice:400,Bob:800"` | `/addexact Dinner 1200 Bob Alice:400,Bob:800` |
 | Add % expense     | `govin add "Taxi" --paid-by Alice --amount 600 --percent "Alice:60,Bob:40"`    | `/addpercent Taxi 600 Alice Alice:60,Bob:40`  |
 | List expenses     | `govin list`                                                                   | `/expenses`                                   |
@@ -331,6 +340,7 @@ You can add the bot to a **Telegram group** so all friends can add expenses toge
 | Settlement plan   | `govin settle`                                                                 | `/settle`                                     |
 | Record payment    | `govin paid --from Bob --to Alice --amount 500`                                | `/paid Bob Alice 500`                         |
 | List members      | `govin member list`                                                            | `/members`                                    |
+| Main Menu         | _(Not applicable)_                                                             | `/menu`                                       |
 | Export            | `govin export --output trip.json`                                              | _(CLI only)_                                  |
 | Import            | `govin import trip.json`                                                       | _(CLI only)_                                  |
 
