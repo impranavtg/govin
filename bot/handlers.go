@@ -6,12 +6,48 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/impranavtg/govin/internal/models"
 	"github.com/impranavtg/govin/internal/settler"
 	tele "gopkg.in/telebot.v3"
 )
+
+// --- Session State for Conversational Flows ---
+
+type Session struct {
+	Action      string
+	Step        int
+	Description string
+	Amount      float64
+	PaidBy      string
+	Date        time.Time
+	MessageID   int
+}
+
+var (
+	sessionMu    sync.RWMutex
+	userSessions = make(map[int64]*Session)
+)
+
+func getSession(chatID int64) *Session {
+	sessionMu.RLock()
+	defer sessionMu.RUnlock()
+	return userSessions[chatID]
+}
+
+func setSession(chatID int64, s *Session) {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	userSessions[chatID] = s
+}
+
+func clearSession(chatID int64) {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	delete(userSessions, chatID)
+}
 
 func registerHandlers(b *tele.Bot) {
 	b.Handle("/start", handleStart)
@@ -92,21 +128,75 @@ func parseArgs(input string) []string {
 	return args
 }
 
-// --- /start ---
+// --- /start and /menu ---
 
 func handleStart(c tele.Context) error {
-	return reply(c, `👋 *Welcome to govin!*
+	return sendMainMenu(c)
+}
 
-Split group expenses right from Telegram — no sign-up, no cloud.
+func handleMenu(c tele.Context) error {
+	return sendMainMenu(c)
+}
 
-*Quick start:*
-1️⃣  /newgroup Goa Trip ₹
-2️⃣  /use Goa Trip
-3️⃣  /add Hotel 9000 Alice Alice,Bob,Charlie
-4️⃣  /balance
-5️⃣  /settle
+func sendMainMenu(c tele.Context) error {
+	menu := &tele.ReplyMarkup{}
+	btnAdd := menu.Data("➕ Add Expense", "menu_add")
+	btnExpenses := menu.Data("📋 List Expenses", "menu_expenses")
+	btnBalance := menu.Data("⚖️ View Balances", "menu_balance")
+	btnSettle := menu.Data("🧮 Settle Up", "menu_settle")
+	btnLogPayment := menu.Data("💸 Log Payment", "add_wiz_paid_from")
+	btnHelp := menu.Data("❓ Help", "menu_help")
 
-Type /help to see all commands.`)
+	menu.Inline(
+		menu.Row(btnAdd, btnExpenses),
+		menu.Row(btnBalance, btnSettle),
+		menu.Row(btnLogPayment, btnHelp),
+	)
+
+	return c.Send("👋 *Welcome to govin!*\n\nSplit expenses with your group — no sign-up, no cloud.\n\nUse the buttons below or type commands directly:", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
+}
+
+func handleMenuCallback(c tele.Context) error {
+	action := c.Callback().Data
+	var err error
+	switch action {
+	case "add":
+		err = handleAdd(c)
+	case "expenses":
+		err = renderExpensesPage(c, 1, false)
+	case "balance":
+		err = handleBalance(c)
+	case "settle":
+		err = handleSettle(c)
+	case "help":
+		c.Respond()
+		return reply(c, `📖 *govin commands*
+
+*Groups*
+/newgroup <name> [currency]
+/groups — List groups
+/use <group> — Set active group
+
+*Expenses*
+/add — Interactive wizard
+/addexact <desc> <amt> <paidBy> <Name:amt,...>
+/addpercent <desc> <amt> <paidBy> <Name:pct,...>
+
+*View*
+/expenses — Paginated list
+/balance — Who owes what
+/settle — Minimal payment plan
+
+*Record payment*
+/paid <from> <to> <amount>
+
+/cancel — Cancel any action`)
+	}
+	c.Respond()
+	return err
 }
 
 // --- /help ---
@@ -249,70 +339,180 @@ func handleMembers(c tele.Context) error {
 	return reply(c, fmt.Sprintf("👥 *Members — %s*\n\n%s", g.Name, strings.Join(names, "\n")))
 }
 
-// --- /add (equal split) ---
-// Format: /add <description> <amount> <paidBy> <person1,person2,...>
+// --- /add (Interactive Wizard) ---
 
 func handleAdd(c tele.Context) error {
-	g, err := requireGroup(c)
+	_, err := requireGroup(c)
 	if err != nil {
 		return replyErr(c, err.Error())
 	}
 
-	args := parseArgs(c.Message().Payload)
-	args, date := parseOptionalDate(args)
-	if len(args) < 4 {
-		return replyErr(c, "Usage: /add <description> <amount> <paidBy> <split with> [date]\nExample: `/add \"Hotel\" 9000 Alice \"Alice,Bob,Charlie\" 2023-12-25`")
+	// Start a fresh session
+	session := &Session{Action: "ADDING_EXPENSE", Step: 1}
+	setSession(c.Chat().ID, session)
+
+	msg, err := c.Bot().Send(c.Chat(), "What is the expense for? (e.g. 'Dinner', 'Taxi')\n\n_Type your answer below, or type /cancel to stop._", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	if err == nil {
+		session.MessageID = msg.ID
+		setSession(c.Chat().ID, session)
+	}
+	return err
+}
+
+func handleCancel(c tele.Context) error {
+	clearSession(c.Chat().ID)
+	return reply(c, "🛑 Action cancelled.")
+}
+
+func handleTextReply(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil {
+		// No active wizard, ignore or handle normal chat
+		return nil
 	}
 
-	desc := args[0]
-	amount, err := strconv.ParseFloat(args[1], 64)
+	if session.Action != "ADDING_EXPENSE" {
+		return nil
+	}
+
+	g, err := requireGroup(c)
 	if err != nil {
-		return replyErr(c, "Invalid amount: "+args[1])
-	}
-	paidBy := args[2]
-	withNames := strings.Split(args[3], ",")
-
-	// Auto-create payer + split members
-	if _, err := models.GetOrCreateMember(g.ID, paidBy); err != nil {
-		return replyErr(c, "Could not create member: "+err.Error())
+		clearSession(c.Chat().ID)
+		return replyErr(c, err.Error())
 	}
 
-	var members []models.Member
-	for _, n := range withNames {
-		n = strings.TrimSpace(n)
-		if n == "" {
-			continue
+	text := strings.TrimSpace(c.Text())
+
+	switch session.Step {
+	case 1: // Waiting for Description
+		session.Description = text
+		session.Step = 2
+		setSession(c.Chat().ID, session)
+
+		sym := g.CurrencySymbol()
+		var curr string
+		if sym != "" {
+			curr = " (" + sym + ")"
 		}
-		m, err := models.GetOrCreateMember(g.ID, n)
+		return reply(c, fmt.Sprintf("Got it: *%s*.\n\nHow much did it cost%s?", session.Description, curr))
+
+	case 2: // Waiting for Amount
+		amount, err := strconv.ParseFloat(text, 64)
+		if err != nil || amount <= 0 {
+			return replyErr(c, "Please enter a valid positive number.")
+		}
+		session.Amount = amount
+		session.Step = 3
+		setSession(c.Chat().ID, session)
+
+		// Ask who paid using Inline Keyboard
+		members, _ := models.ListMembers(g.ID)
+		var row []tele.Btn
+		menu := &tele.ReplyMarkup{}
+		for _, m := range members {
+			btn := menu.Data(m.Name, "add_wiz_payer", m.Name)
+			row = append(row, btn)
+		}
+
+		// Chunk buttons so it doesn't overflow horizontally
+		var rows []tele.Row
+		for i := 0; i < len(row); i += 2 {
+			end := i + 2
+			if end > len(row) {
+				end = len(row)
+			}
+			rows = append(rows, menu.Row(row[i:end]...))
+		}
+		menu.Inline(rows...)
+
+		return c.Send(fmt.Sprintf("Who paid for *%s* (%.2f)?", session.Description, session.Amount), &tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: menu,
+		})
+	}
+
+	return nil
+}
+
+func handleWizardPayer(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil || session.Action != "ADDING_EXPENSE" || session.Step != 3 {
+		return c.Respond(&tele.CallbackResponse{Text: "Session expired."})
+	}
+
+	payerName := c.Callback().Data
+	session.PaidBy = strings.TrimSpace(payerName)
+	session.Step = 4
+	setSession(c.Chat().ID, session)
+
+	// Update the message we just clicked so they know it registered
+	c.Edit(fmt.Sprintf("Who paid for *%s* (%.2f)?\n✅ *%s*", session.Description, session.Amount, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	// Ask how to split
+	menu := &tele.ReplyMarkup{}
+	btnEqual := menu.Data("Split Equally (Everyone)", "add_wiz_split", "EQUAL")
+	menu.Inline(menu.Row(btnEqual))
+	// Future enhancements could add custom split buttons here
+
+	c.Send("How should this be split?", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
+
+	return c.Respond()
+}
+
+func handleWizardSplit(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil || session.Action != "ADDING_EXPENSE" || session.Step != 4 {
+		return c.Respond(&tele.CallbackResponse{Text: "Session expired."})
+	}
+
+	g, _ := requireGroup(c)
+	splitType := c.Callback().Data
+
+	if splitType == "EQUAL" {
+		members, _ := models.ListMembers(g.ID)
+		if len(members) == 0 {
+			// fallback - shouldn't happen if payer exists, but just in case
+			models.GetOrCreateMember(g.ID, session.PaidBy)
+			members, _ = models.ListMembers(g.ID)
+		}
+
+		splits := buildEqualSplits(members, session.Amount)
+
+		createdBy := c.Sender().FirstName
+		if c.Sender().LastName != "" {
+			createdBy += " " + c.Sender().LastName
+		}
+
+		expense, err := models.AddExpense(g.ID, session.Description, session.Amount, session.PaidBy, createdBy, time.Now(), splits)
 		if err != nil {
-			return replyErr(c, "Could not create member "+n+": "+err.Error())
+			c.Send("❌ Failed: " + err.Error())
+			clearSession(c.Chat().ID)
+			return c.Respond()
 		}
-		members = append(members, *m)
+
+		sym := g.CurrencySymbol()
+		var splitLines []string
+		for _, s := range expense.Splits {
+			splitLines = append(splitLines, fmt.Sprintf("  %s: %s%.2f", s.Name, sym, s.Amount))
+		}
+
+		msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*", session.Description, sym, session.Amount, session.PaidBy)
+		if session.PaidBy != createdBy {
+			msg += fmt.Sprintf(" (Added by %s)", createdBy)
+		}
+		msg += fmt.Sprintf("\n\n*Split:*\n%s", strings.Join(splitLines, "\n"))
+
+		c.Edit("How should this be split?\n✅ *Equally*")
+		reply(c, msg)
+
+		clearSession(c.Chat().ID)
+		return c.Respond()
 	}
 
-	splits := buildEqualSplits(members, amount)
-	createdBy := c.Sender().FirstName
-	if c.Sender().LastName != "" {
-		createdBy += " " + c.Sender().LastName
-	}
-	expense, err := models.AddExpense(g.ID, desc, amount, paidBy, createdBy, date, splits)
-	if err != nil {
-		return replyErr(c, "Failed to add expense: "+err.Error())
-	}
-
-	sym := g.CurrencySymbol()
-	var splitLines []string
-	for _, s := range expense.Splits {
-		splitLines = append(splitLines, fmt.Sprintf("  %s: %s%.2f", s.Name, sym, s.Amount))
-	}
-
-	msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*", desc, sym, amount, paidBy)
-	if paidBy != createdBy {
-		msg += fmt.Sprintf(" (Added by %s)", createdBy)
-	}
-	msg += fmt.Sprintf("\n\n*Split:*\n%s", strings.Join(splitLines, "\n"))
-
-	return reply(c, msg)
+	return c.Respond()
 }
 
 // --- /addexact ---
@@ -432,6 +632,19 @@ func handleAddPercent(c tele.Context) error {
 // --- /expenses ---
 
 func handleExpenses(c tele.Context) error {
+	return renderExpensesPage(c, 1, false)
+}
+
+func handleExpensesPage(c tele.Context) error {
+	pageStr := strings.TrimSpace(c.Callback().Data)
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	return renderExpensesPage(c, page, true)
+}
+
+func renderExpensesPage(c tele.Context, page int, isCallback bool) error {
 	g, err := requireGroup(c)
 	if err != nil {
 		return replyErr(c, err.Error())
@@ -445,9 +658,23 @@ func handleExpenses(c tele.Context) error {
 		return reply(c, "No expenses yet. Add one with /add")
 	}
 
+	pageSize := 5
+	totalPages := int(math.Ceil(float64(len(expenses)) / float64(pageSize)))
+
+	if page > totalPages && totalPages > 0 {
+		page = totalPages
+	}
+
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > len(expenses) {
+		end = len(expenses)
+	}
+
 	sym := g.CurrencySymbol()
 	var lines []string
-	for _, e := range expenses {
+	for i := start; i < end; i++ {
+		e := expenses[i]
 		paidByStr := e.PaidBy
 		if e.CreatedBy != "" && e.CreatedBy != e.PaidBy && e.CreatedBy != "Me" {
 			paidByStr += fmt.Sprintf(" (Added by %s)", e.CreatedBy)
@@ -456,7 +683,44 @@ func handleExpenses(c tele.Context) error {
 			e.Description, sym, e.Amount, paidByStr, e.CreatedAt.Format("Jan 02")))
 	}
 
-	return reply(c, fmt.Sprintf("📝 *Expenses — %s*\n\n%s", g.Name, strings.Join(lines, "\n")))
+	msg := fmt.Sprintf("📝 *Expenses — %s* (Page %d/%d)\n\n%s", g.Name, page, totalPages, strings.Join(lines, "\n"))
+
+	// Build inline keyboard
+	var row []tele.Btn
+
+	menu := &tele.ReplyMarkup{}
+
+	if page > 1 {
+		btnPrev := menu.Data("⬅️ Prev", "expenses_page", strconv.Itoa(page-1))
+		row = append(row, btnPrev)
+	}
+	if page < totalPages {
+		btnNext := menu.Data("Next ➡️", "expenses_page", strconv.Itoa(page+1))
+		row = append(row, btnNext)
+	}
+
+	if len(row) > 0 {
+		menu.Inline(menu.Row(row...))
+	} else {
+		menu = nil
+	}
+
+	opt := &tele.SendOptions{ParseMode: tele.ModeMarkdown}
+	if menu != nil {
+		opt.ReplyMarkup = menu
+	}
+
+	if isCallback {
+		err := c.Edit(msg, opt)
+		if err != nil {
+			// If message content didn't actually change, Telegram returns an error. Ignore it.
+			c.Respond()
+			return nil
+		}
+		return c.Respond()
+	}
+
+	return c.Send(msg, opt)
 }
 
 // --- /balance ---
@@ -495,7 +759,14 @@ func handleBalance(c tele.Context) error {
 		}
 	}
 
-	return reply(c, fmt.Sprintf("💰 *Balances — %s*\n\n%s", g.Name, strings.Join(lines, "\n")))
+	menu := &tele.ReplyMarkup{}
+	btnLogPayment := menu.Data("💸 Log Payment", "add_wiz_paid_from")
+	menu.Inline(menu.Row(btnLogPayment))
+
+	return c.Send(fmt.Sprintf("💰 *Balances — %s*\n\n%s", g.Name, strings.Join(lines, "\n")), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
 }
 
 // --- /settle ---
@@ -524,7 +795,15 @@ func handleSettle(c tele.Context) error {
 
 	msg := fmt.Sprintf("🧮 *Settlement Plan — %s*\n_%d payment(s) needed_\n\n%s\n\nRecord with: /paid <from> <to> <amount>",
 		g.Name, len(payments), strings.Join(lines, "\n"))
-	return reply(c, msg)
+
+	menu := &tele.ReplyMarkup{}
+	btnLogPayment := menu.Data("💸 Log Payment", "add_wiz_paid_from")
+	menu.Inline(menu.Row(btnLogPayment))
+
+	return c.Send(msg, &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
 }
 
 // --- /paid ---
@@ -634,4 +913,103 @@ func buildPercentSplits(groupID, spec string, total float64) ([]models.ExpenseSp
 		return nil, fmt.Errorf("percentages sum to %.1f%%, must be 100%%", pctSum)
 	}
 	return splits, nil
+}
+
+// --- Interactive Payment Logging Wizard ---
+
+func handleWizardPaidFrom(c tele.Context) error {
+	g, err := requireGroup(c)
+	if err != nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Group required."})
+	}
+
+	session := &Session{Action: "LOG_PAYMENT", Step: 1}
+	setSession(c.Chat().ID, session)
+
+	members, _ := models.ListMembers(g.ID)
+	var row []tele.Btn
+	menu := &tele.ReplyMarkup{}
+	for _, m := range members {
+		btn := menu.Data(m.Name, "add_wiz_paid_to", m.Name)
+		row = append(row, btn)
+	}
+
+	var rows []tele.Row
+	for i := 0; i < len(row); i += 2 {
+		end := i + 2
+		if end > len(row) {
+			end = len(row)
+		}
+		rows = append(rows, menu.Row(row[i:end]...))
+	}
+	menu.Inline(rows...)
+
+	c.Send("Who is making the payment?", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
+
+	return c.Respond()
+}
+
+func handleWizardPaidTo(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil || session.Action != "LOG_PAYMENT" || session.Step != 1 {
+		return c.Respond(&tele.CallbackResponse{Text: "Session expired."})
+	}
+	g, _ := requireGroup(c)
+
+	fromName := c.Callback().Data
+	session.Description = strings.TrimSpace(fromName) // repurpose desc for 'from'
+	session.Step = 2
+	setSession(c.Chat().ID, session)
+
+	c.Edit(fmt.Sprintf("Who is making the payment?\n✅ *%s*", session.Description), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	members, _ := models.ListMembers(g.ID)
+	var row []tele.Btn
+	menu := &tele.ReplyMarkup{}
+	for _, m := range members {
+		// Don't show the person paying as the recipient
+		if m.Name == session.Description {
+			continue
+		}
+		btn := menu.Data(m.Name, "add_wiz_paid_amt", m.Name)
+		row = append(row, btn)
+	}
+
+	var rows []tele.Row
+	for i := 0; i < len(row); i += 2 {
+		end := i + 2
+		if end > len(row) {
+			end = len(row)
+		}
+		rows = append(rows, menu.Row(row[i:end]...))
+	}
+	menu.Inline(rows...)
+
+	c.Send(fmt.Sprintf("Who is *%s* paying?", session.Description), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
+	return c.Respond()
+}
+
+func handleWizardPaidAmt(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil || session.Action != "LOG_PAYMENT" || session.Step != 2 {
+		return c.Respond(&tele.CallbackResponse{Text: "Session expired."})
+	}
+
+	toName := c.Callback().Data
+	session.PaidBy = strings.TrimSpace(toName) // repurpose paidBy for 'to'
+	session.Step = 3
+	setSession(c.Chat().ID, session)
+
+	c.Edit(fmt.Sprintf("Who is *%s* paying?\n✅ *%s*", session.Description, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	c.Send(fmt.Sprintf("How much is *%s* paying to *%s*?\n\n_Type the amount below, or type /cancel to stop._", session.Description, session.PaidBy), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	setSession(c.Chat().ID, session)
+
+	return c.Respond()
 }
