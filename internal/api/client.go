@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/impranavtg/govin/internal/models"
 	"github.com/impranavtg/govin/internal/settler"
@@ -106,14 +107,19 @@ func (c *Client) ListExpenses(groupName string) ([]models.Expense, error) {
 	return expenses, err
 }
 
-func (c *Client) AddExpense(groupName, description string, amount float64, paidBy string, splits []models.ExpenseSplit) (*models.Expense, error) {
+func (c *Client) AddExpense(groupName, description string, amount float64, paidBy, createdBy string, date time.Time, splits []models.ExpenseSplit) (*models.Expense, error) {
 	var expense models.Expense
-	err := c.do("POST", "/expenses?group="+url.QueryEscape(groupName), map[string]any{
+	payload := map[string]any{
 		"description": description,
 		"amount":      amount,
 		"paid_by":     paidBy,
+		"created_by":  createdBy,
 		"splits":      splits,
-	}, &expense)
+	}
+	if !date.IsZero() {
+		payload["date"] = date
+	}
+	err := c.do("POST", "/expenses?group="+url.QueryEscape(groupName), payload, &expense)
 	return &expense, err
 }
 

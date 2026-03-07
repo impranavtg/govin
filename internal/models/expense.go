@@ -22,11 +22,12 @@ type Expense struct {
 	Description string
 	Amount      float64
 	PaidBy      string
+	CreatedBy   string
 	CreatedAt   time.Time
 	Splits      []ExpenseSplit
 }
 
-func AddExpense(groupID, description string, amount float64, paidBy string, splits []ExpenseSplit) (*Expense, error) {
+func AddExpense(groupID, description string, amount float64, paidBy, createdBy string, date time.Time, splits []ExpenseSplit) (*Expense, error) {
 	id := uuid.New().String()
 	tx, err := db.DB.Begin()
 	if err != nil {
@@ -34,9 +35,13 @@ func AddExpense(groupID, description string, amount float64, paidBy string, spli
 	}
 	defer tx.Rollback()
 
+	if date.IsZero() {
+		date = time.Now()
+	}
+
 	_, err = tx.Exec(
-		`INSERT INTO expenses (id, group_id, description, amount, paid_by) VALUES (?, ?, ?, ?, ?)`,
-		id, groupID, description, amount, paidBy,
+		`INSERT INTO expenses (id, group_id, description, amount, paid_by, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, groupID, description, amount, paidBy, createdBy, date,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add expense: %w", err)
@@ -60,13 +65,13 @@ func AddExpense(groupID, description string, amount float64, paidBy string, spli
 
 	return &Expense{
 		ID: id, GroupID: groupID, Description: description,
-		Amount: amount, PaidBy: paidBy, CreatedAt: time.Now(), Splits: splits,
+		Amount: amount, PaidBy: paidBy, CreatedBy: createdBy, CreatedAt: date, Splits: splits,
 	}, nil
 }
 
 func ListExpenses(groupID string) ([]Expense, error) {
 	rows, err := db.DB.Query(
-		`SELECT id, group_id, description, amount, paid_by, created_at FROM expenses WHERE group_id = ? ORDER BY created_at`,
+		`SELECT id, group_id, description, amount, paid_by, created_by, created_at FROM expenses WHERE group_id = ? ORDER BY created_at`,
 		groupID,
 	)
 	if err != nil {
@@ -76,7 +81,7 @@ func ListExpenses(groupID string) ([]Expense, error) {
 	var expenses []Expense
 	for rows.Next() {
 		var e Expense
-		if err := rows.Scan(&e.ID, &e.GroupID, &e.Description, &e.Amount, &e.PaidBy, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.GroupID, &e.Description, &e.Amount, &e.PaidBy, &e.CreatedBy, &e.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
