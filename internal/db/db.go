@@ -40,7 +40,14 @@ func migrate() error {
 		id         TEXT PRIMARY KEY,
 		name       TEXT NOT NULL UNIQUE,
 		currency   TEXT NOT NULL DEFAULT '',
+		passcode   TEXT NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT (datetime('now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS group_users (
+		group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+		chat_id  INTEGER NOT NULL,
+		PRIMARY KEY (group_id, chat_id)
 	);
 
 	CREATE TABLE IF NOT EXISTS members (
@@ -80,8 +87,9 @@ func migrate() error {
 	if _, err := DB.Exec(schema); err != nil {
 		return err
 	}
-	// Safe migration: add currency column for existing DBs (ignored if already present).
+	// Safe migration: add currency and passcode columns for existing DBs (ignored if already present).
 	DB.Exec(`ALTER TABLE groups ADD COLUMN currency TEXT NOT NULL DEFAULT ''`)
+	DB.Exec(`ALTER TABLE groups ADD COLUMN passcode TEXT NOT NULL DEFAULT ''`)
 	DB.Exec(`ALTER TABLE expenses ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
 
 	// Bot sessions for Telegram bot per-chat active group tracking.

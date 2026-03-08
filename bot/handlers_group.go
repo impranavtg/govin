@@ -52,6 +52,11 @@ func handleNewGroup(c tele.Context) error {
 		fmt.Printf("Warning: Failed to auto-add creator to group %s: %v\n", g.Name, err)
 	}
 
+	// Auto-join the chat
+	if err := models.JoinGroup(g.ID, c.Chat().ID); err != nil {
+		fmt.Printf("Warning: Failed to auto-join creator chat to group %s: %v\n", g.Name, err)
+	}
+
 	// Auto-set as active
 	setActiveGroup(c.Chat().ID, g.Name)
 
@@ -59,6 +64,7 @@ func handleNewGroup(c tele.Context) error {
 	if currency != "" {
 		msg += fmt.Sprintf(" (currency: %s)", currency)
 	}
+	msg += fmt.Sprintf("\n\n🔒 *Passcode:* `%s`\nShare this passcode with your friends so they can join.", g.Passcode)
 	msg += "\n\nIt's now your active group. Start adding expenses!"
 	return reply(c, msg)
 }
@@ -66,12 +72,12 @@ func handleNewGroup(c tele.Context) error {
 // --- /groups ---
 
 func handleGroups(c tele.Context) error {
-	groups, err := models.ListGroups()
+	groups, err := models.ListGroupsForUser(c.Chat().ID)
 	if err != nil {
 		return replyErr(c, err.Error())
 	}
 	if len(groups) == 0 {
-		return reply(c, "No groups yet. Create one with /newgroup")
+		return reply(c, "You haven't joined any groups yet. Create one with /newgroup, or get a passcode from a friend to /join.")
 	}
 
 	active := getActiveGroup(c.Chat().ID)
@@ -98,10 +104,49 @@ func handleUse(c tele.Context) error {
 		return replyErr(c, "Usage: /use <group name>")
 	}
 
-	if _, err := models.GetGroup(name); err != nil {
+	g, err := models.GetGroup(name)
+	if err != nil {
 		return replyErr(c, fmt.Sprintf("Group %q not found", name))
+	}
+
+	if !models.IsGroupMember(g.ID, c.Chat().ID) {
+		return replyErr(c, fmt.Sprintf("You are not a member of group %q.\nUse `/join \"%s\" <passcode>` to join.", name, name))
 	}
 
 	setActiveGroup(c.Chat().ID, name)
 	return reply(c, fmt.Sprintf("✅ Active group set to *%s*", name))
+}
+
+// --- /join ---
+
+func handleJoin(c tele.Context) error {
+	args := parseArgs(c.Message().Payload)
+	if len(args) < 2 {
+		return replyErr(c, "Usage: /join <group name> <passcode>")
+	}
+	passcode := args[len(args)-1]
+	name := strings.Join(args[:len(args)-1], " ")
+
+	g, err := models.GetGroup(name)
+	if err != nil {
+		return replyErr(c, fmt.Sprintf("Group %q not found", name))
+	}
+
+	if g.Passcode != passcode {
+		return replyErr(c, "Invalid passcode.")
+	}
+
+	if err := models.JoinGroup(g.ID, c.Chat().ID); err != nil {
+		return replyErr(c, "Failed to join group.")
+	}
+
+	// Auto-add the member to the group members list
+	creatorName := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		creatorName += " " + c.Sender().LastName
+	}
+	models.GetOrCreateMember(g.ID, creatorName)
+
+	setActiveGroup(c.Chat().ID, g.Name)
+	return reply(c, fmt.Sprintf("✅ Successfully joined *%s*! It is now your active group.", g.Name))
 }

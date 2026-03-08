@@ -12,6 +12,7 @@ func registerHandlers(b *tele.Bot) {
 	b.Handle("/use", handleUse)
 	b.Handle("/members", handleMembers)
 	b.Handle("/addmember", handleAddMember)
+	b.Handle("/join", handleJoin)
 	b.Handle("/add", handleAdd)
 	b.Handle("/addexact", handleAddExact)
 	b.Handle("/addpercent", handleAddPercent)
