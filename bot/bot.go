@@ -8,7 +8,6 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-
 // Start initialises and runs the Telegram bot. Blocks forever.
 func Start(token string) error {
 	pref := tele.Settings{
@@ -27,6 +26,7 @@ func Start(token string) error {
 	b.Handle("\fexpenses_page", handleExpensesPage)
 	b.Handle("\fadd_wiz_payer", handleWizardPayer)
 	b.Handle("\fadd_wiz_split", handleWizardSplit)
+	b.Handle("\fadd_wiz_credit", handleWizardCreditTo)
 	b.Handle("\fadd_wiz_paid_from", handleWizardPaidFrom)
 	b.Handle("\fadd_wiz_paid_to", handleWizardPaidTo)
 	b.Handle("\fadd_wiz_paid_amt", handleWizardPaidAmt)

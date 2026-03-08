@@ -26,6 +26,9 @@ func requireGroup(c tele.Context) (*models.Group, error) {
 	if err != nil {
 		return nil, fmt.Errorf("group %q not found — create one with /newgroup", name)
 	}
+	if !models.IsGroupMember(g.ID, c.Chat().ID) {
+		return nil, fmt.Errorf("you are not a member of group %q. Use /join to join it", name)
+	}
 	return g, nil
 }
 

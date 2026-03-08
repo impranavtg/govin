@@ -128,7 +128,11 @@ func handleTextReply(c tele.Context) error {
 		// Ask how to split
 		menu := &tele.ReplyMarkup{}
 		btnEqual := menu.Data("Split Equally (Everyone)", "add_wiz_split", "EQUAL")
-		menu.Inline(menu.Row(btnEqual))
+		btnFull := menu.Data("Full Amount (Credit)", "add_wiz_split", "FULL")
+		menu.Inline(
+			menu.Row(btnEqual),
+			menu.Row(btnFull),
+		)
 		// Future enhancements could add custom split buttons here
 
 		return c.Send(fmt.Sprintf("Got it. *%s* paid.\n\nHow should this be split?\n\n_Tap a button below or type EQUAL._", session.PaidBy), &tele.SendOptions{
@@ -173,9 +177,70 @@ func handleTextReply(c tele.Context) error {
 
 			clearSession(c.Chat().ID)
 			return reply(c, msg)
+		} else if splitType == "FULL" {
+			session.Step = 5
+			setSession(c.Chat().ID, session)
+
+			// Ask who the credit is for
+			members, _ := models.ListMembers(g.ID)
+			var row []tele.Btn
+			menu := &tele.ReplyMarkup{}
+			for _, m := range members {
+				btn := menu.Data(m.Name, "add_wiz_credit", m.Name)
+				row = append(row, btn)
+			}
+
+			// Chunk buttons
+			var rows []tele.Row
+			for i := 0; i < len(row); i += 2 {
+				end := i + 2
+				if end > len(row) {
+					end = len(row)
+				}
+				rows = append(rows, menu.Row(row[i:end]...))
+			}
+			menu.Inline(rows...)
+
+			return c.Send(fmt.Sprintf("Who is this full credit for?\n\n_Tap a button below or type their name._"), &tele.SendOptions{
+				ParseMode:   tele.ModeMarkdown,
+				ReplyMarkup: menu,
+			})
 		} else {
-			return replyErr(c, "Only 'EQUAL' is supported via text right now.")
+			return replyErr(c, "Only 'EQUAL' or 'FULL' are supported via text right now.")
 		}
+	case 5: // Waiting for Credit Recipient
+		recipient := strings.TrimSpace(text)
+
+		// Ensure recipient is a member
+		models.GetOrCreateMember(g.ID, recipient)
+		member, err := models.GetMemberByName(g.ID, recipient)
+		if err != nil {
+			return replyErr(c, "Failed to find member: "+err.Error())
+		}
+
+		splits := []models.ExpenseSplit{
+			{MemberID: member.ID, Name: member.Name, Amount: session.Amount},
+		}
+
+		createdBy := c.Sender().FirstName
+		if c.Sender().LastName != "" {
+			createdBy += " " + c.Sender().LastName
+		}
+
+		_, err = models.AddExpense(g.ID, session.Description, session.Amount, session.PaidBy, createdBy, time.Now(), splits)
+		if err != nil {
+			clearSession(c.Chat().ID)
+			return replyErr(c, "Failed to save credit: "+err.Error())
+		}
+
+		sym := g.CurrencySymbol()
+		msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*\n\n_(Full credit assigned to *%s*)_", session.Description, sym, session.Amount, session.PaidBy, recipient)
+		if session.PaidBy != createdBy {
+			msg += fmt.Sprintf("\nAdded by %s", createdBy)
+		}
+
+		clearSession(c.Chat().ID)
+		return reply(c, msg)
 	}
 
 	return nil
@@ -199,7 +264,11 @@ func handleWizardPayer(c tele.Context) error {
 	// Ask how to split
 	menu := &tele.ReplyMarkup{}
 	btnEqual := menu.Data("Split Equally (Everyone)", "add_wiz_split", "EQUAL")
-	menu.Inline(menu.Row(btnEqual))
+	btnFull := menu.Data("Full Amount (Credit)", "add_wiz_split", "FULL")
+	menu.Inline(
+		menu.Row(btnEqual),
+		menu.Row(btnFull),
+	)
 	// Future enhancements could add custom split buttons here
 
 	c.Send("How should this be split?\n\n_Tap a button below or type EQUAL._", &tele.SendOptions{
@@ -255,8 +324,87 @@ func handleWizardSplit(c tele.Context) error {
 
 		clearSession(c.Chat().ID)
 		return c.Respond()
+	} else if splitType == "FULL" {
+		c.Edit("How should this be split?\n✅ *Full Amount (Credit)*")
+
+		session.Step = 5
+		setSession(c.Chat().ID, session)
+
+		// Ask who the credit is for
+		members, _ := models.ListMembers(g.ID)
+		var row []tele.Btn
+		menu := &tele.ReplyMarkup{}
+		for _, m := range members {
+			btn := menu.Data(m.Name, "add_wiz_credit", m.Name)
+			row = append(row, btn)
+		}
+
+		// Chunk buttons
+		var rows []tele.Row
+		for i := 0; i < len(row); i += 2 {
+			end := i + 2
+			if end > len(row) {
+				end = len(row)
+			}
+			rows = append(rows, menu.Row(row[i:end]...))
+		}
+		menu.Inline(rows...)
+
+		c.Send(fmt.Sprintf("Who is this full credit for?\n\n_Tap a button below or type their name._"), &tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: menu,
+		})
+
+		return c.Respond()
 	}
 
+	return c.Respond()
+}
+
+func handleWizardCreditTo(c tele.Context) error {
+	session := getSession(c.Chat().ID)
+	if session == nil || session.Action != "ADDING_EXPENSE" || session.Step != 5 {
+		return c.Respond(&tele.CallbackResponse{Text: "Session expired."})
+	}
+
+	g, _ := requireGroup(c)
+	recipient := c.Data()
+	fmt.Printf("DEBUG handleWizardCreditTo: c.Data() = %q\n", recipient)
+
+	models.GetOrCreateMember(g.ID, recipient)
+	member, err := models.GetMemberByName(g.ID, recipient)
+	if err != nil {
+		c.Send("❌ Failed to find member: " + err.Error())
+		clearSession(c.Chat().ID)
+		return c.Respond()
+	}
+
+	splits := []models.ExpenseSplit{
+		{MemberID: member.ID, Name: member.Name, Amount: session.Amount},
+	}
+
+	createdBy := c.Sender().FirstName
+	if c.Sender().LastName != "" {
+		createdBy += " " + c.Sender().LastName
+	}
+
+	_, err = models.AddExpense(g.ID, session.Description, session.Amount, session.PaidBy, createdBy, time.Now(), splits)
+	if err != nil {
+		c.Send("❌ Failed to save credit: " + err.Error())
+		clearSession(c.Chat().ID)
+		return c.Respond()
+	}
+
+	sym := g.CurrencySymbol()
+	msg := fmt.Sprintf("✅ *%s* — %s%.2f paid by *%s*\n\n_(Full credit assigned to *%s*)_", session.Description, sym, session.Amount, session.PaidBy, recipient)
+	if session.PaidBy != createdBy {
+		msg += fmt.Sprintf("\nAdded by %s", createdBy)
+	}
+
+	c.Edit(fmt.Sprintf("Who is this full credit for?\n✅ *%s*", recipient), &tele.SendOptions{ParseMode: tele.ModeMarkdown, ReplyMarkup: &tele.ReplyMarkup{}})
+	reply(c, msg)
+
+	clearSession(c.Chat().ID)
 	return c.Respond()
 }
 
